@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign in</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #adminCorner {
+            opacity: 0;
+            transition: opacity 1.8s ease;
+        }
+        #adminCorner:hover {
+            opacity: 0.9;
+        }
+        #adminCorner:active {
+            cursor: grabbing;
+        }
+        #adminLoginPanel {
+            transform: translateX(100%);
+            transition: transform 0.4s ease;
+        }
+        #adminLoginPanel.open {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen flex items-center justify-center overflow-hidden">
+
+<div class="bg-white rounded-2xl shadow p-8 w-96 space-y-3">
+    <h1 class="text-2xl font-bold mb-2">Sign in</h1>
+    <input id="loginUsername" class="border p-2 rounded w-full" placeholder="Username" autocomplete="username">
+    <input id="loginPassword" type="password" class="border p-2 rounded w-full" placeholder="Password" autocomplete="current-password">
+    <div id="loginError" class="text-red-600 text-sm hidden"></div>
+    <button onclick="userLogin()" class="bg-slate-900 text-white p-2 rounded w-full">Login</button>
+    <button onclick="openSignup()" class="bg-slate-200 text-slate-900 p-2 rounded w-full">Sign up</button>
+</div>
+
+<div id="signupModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-40">
+    <div class="bg-white rounded-2xl p-6 w-96 space-y-3 shadow-2xl">
+        <h2 class="text-xl font-bold">Create account</h2>
+        <input id="signupUsername" class="border p-2 rounded w-full" placeholder="Username">
+        <input id="signupPassword" type="password" class="border p-2 rounded w-full" placeholder="Password">
+        <input id="signupConfirm" type="password" class="border p-2 rounded w-full" placeholder="Confirm password">
+        <div id="signupMsg" class="text-sm hidden"></div>
+        <button onclick="submitSignup()" class="bg-green-600 text-white p-2 rounded w-full">Submit request</button>
+        <button onclick="closeSignup()" class="bg-slate-200 text-slate-900 p-2 rounded w-full">Close</button>
+    </div>
+</div>
+
+<div id="adminCorner" class="fixed bottom-2 right-2 w-6 h-6 rounded-sm bg-slate-900 z-30 cursor-grab"></div>
+
+<div id="adminLoginPanel" class="fixed inset-0 bg-slate-900 text-slate-100 flex items-center justify-center z-50">
+    <div class="bg-slate-800 rounded-2xl shadow p-8 w-96 space-y-3">
+        <h1 class="text-2xl font-bold mb-2">Admin sign in</h1>
+        <input id="adminUsername" class="border p-2 rounded w-full bg-slate-900 text-slate-100 border-slate-700" placeholder="Username">
+        <input id="adminPassword" type="password" class="border p-2 rounded w-full bg-slate-900 text-slate-100 border-slate-700" placeholder="Password">
+        <div id="adminLoginError" class="text-red-400 text-sm hidden"></div>
+        <button onclick="adminLogin()" class="bg-slate-100 text-slate-900 p-2 rounded w-full">Login</button>
+        <button onclick="closeAdminLogin()" class="bg-slate-700 text-slate-100 p-2 rounded w-full">Back</button>
+    </div>
+</div>
+
+<script>
+async function userLogin() {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
+    });
+    const err = document.getElementById('loginError');
+    if (res.ok) {
+        location.href = '/';
+    } else {
+        const data = await res.json().catch(() => ({}));
+        err.textContent = data.error || 'Login failed';
+        err.classList.remove('hidden');
+    }
+}
+
+function openSignup() {
+    document.getElementById('signupModal').classList.remove('hidden');
+}
+
+function closeSignup() {
+    document.getElementById('signupModal').classList.add('hidden');
+    document.getElementById('signupMsg').classList.add('hidden');
+}
+
+async function submitSignup() {
+    const username = document.getElementById('signupUsername').value;
+    const password = document.getElementById('signupPassword').value;
+    const confirm = document.getElementById('signupConfirm').value;
+    const msg = document.getElementById('signupMsg');
+    const res = await fetch('/auth/signup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password, confirm})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        msg.textContent = 'Request submitted. Wait for admin approval.';
+        msg.className = 'text-sm text-green-600';
+    } else {
+        msg.textContent = data.error || 'Signup failed';
+        msg.className = 'text-sm text-red-600';
+    }
+    msg.classList.remove('hidden');
+}
+
+async function adminLogin() {
+    const username = document.getElementById('adminUsername').value;
+    const password = document.getElementById('adminPassword').value;
+    const res = await fetch('/auth/admin/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
+    });
+    const err = document.getElementById('adminLoginError');
+    if (res.ok) {
+        location.href = '/';
+    } else {
+        const data = await res.json().catch(() => ({}));
+        err.textContent = data.error || 'Login failed';
+        err.classList.remove('hidden');
+    }
+}
+
+function closeAdminLogin() {
+    document.getElementById('adminLoginPanel').classList.remove('open');
+}
+
+(function() {
+    const corner = document.getElementById('adminCorner');
+    const panel = document.getElementById('adminLoginPanel');
+    let startX = null;
+    let dragged = false;
+
+    corner.addEventListener('mousedown', (e) => {
+        startX = e.clientX;
+        dragged = false;
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (startX === null) return;
+        if (Math.abs(e.clientX - startX) > 5) dragged = true;
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (startX === null) return;
+        const dx = e.clientX - startX;
+        startX = null;
+        if (dragged && dx < -100) {
+            panel.classList.add('open');
+        }
+    });
+
+    corner.addEventListener('click', (e) => { e.preventDefault(); });
+})();
+</script>
+
+</body>
+</html>
