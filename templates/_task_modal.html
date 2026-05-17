@@ -1,0 +1,45 @@
+<div id="taskModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl p-5 w-[420px] max-w-full max-h-[85vh] overflow-y-auto shadow-2xl">
+        <div id="taskForm" class="space-y-3">
+
+            <input id="taskName" class="border p-2 rounded w-full" placeholder="Name">
+
+            <textarea id="taskDescription" rows="3" class="border p-2 rounded w-full" placeholder="Description"></textarea>
+
+            <input id="taskTags" class="border p-2 rounded w-full" placeholder="Tags comma separated">
+
+            <input type="color" id="taskColor" class="w-full h-10" value="#3b82f6">
+
+            <button
+                onclick="toggleCode()"
+                class="text-sm underline">
+                ▼ Code
+            </button>
+
+            <textarea
+                id="taskCode"
+                class="border p-2 rounded w-full hidden"
+                rows="6"
+                oninput="updateInputVisibility()"
+                placeholder="Python script / command (use 'value' if input is provided)"></textarea>
+
+            <div id="taskInputSection" class="hidden space-y-1">
+                <label class="text-xs text-slate-600">Input (one per line, comma-separated, or single value)</label>
+                <textarea
+                    id="taskInput"
+                    class="border p-2 rounded w-full"
+                    rows="3"
+                    placeholder="value1, value2, value3 — or one per line"></textarea>
+            </div>
+
+            <button
+                id="saveBtn"
+                onclick="saveTask()"
+                class="bg-green-600 text-white p-2 rounded w-full">
+                Save
+            </button>
+
+            <button onclick="closeModal()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Close</button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,110 @@
+<div id="recurrenceModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl p-6 w-[480px] shadow-2xl space-y-3 max-h-[90vh] overflow-auto">
+        <h2 class="text-xl font-bold">Recurring Task</h2>
+        <div id="recurrenceTaskName" class="text-sm text-slate-600"></div>
+
+        <div>
+            <label class="text-xs text-slate-600 block mb-1">Frequency</label>
+            <select id="recFrequency" class="border p-2 rounded w-full" onchange="updateRecurrenceVisibility()">
+                <option value="daily">Daily</option>
+                <option value="weekday">Every weekday (Mon–Fri)</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="custom">Custom interval</option>
+            </select>
+        </div>
+
+        <div id="recWeekly" class="hidden">
+            <label class="text-xs text-slate-600 block mb-1">Days of the week</label>
+            <div class="flex gap-1 flex-wrap" id="recWeeklyDays"></div>
+        </div>
+
+        <div id="recMonthly" class="hidden space-y-2">
+            <div>
+                <label class="text-xs text-slate-600 block mb-1">Pattern</label>
+                <select id="recMonthlyMode" class="border p-2 rounded w-full" onchange="updateMonthlyMode('rec')">
+                    <option value="day">On day of month</option>
+                    <option value="weekday">On nth weekday of month</option>
+                </select>
+            </div>
+            <div id="recMonthlyDay">
+                <label class="text-xs text-slate-600 block mb-1">Day of month (1–31)</label>
+                <input type="number" id="recDayOfMonth" min="1" max="31" value="1" class="border p-2 rounded w-full">
+            </div>
+            <div id="recMonthlyWeekday" class="hidden">
+                <div class="flex gap-2">
+                    <select id="recNth" class="border p-2 rounded flex-1">
+                        <option value="1">First</option>
+                        <option value="2">Second</option>
+                        <option value="3">Third</option>
+                        <option value="4">Fourth</option>
+                        <option value="-1">Last</option>
+                    </select>
+                    <select id="recNthWeekday" class="border p-2 rounded flex-1"></select>
+                </div>
+            </div>
+        </div>
+
+        <div id="recCustom" class="hidden space-y-2">
+            <div>
+                <label class="text-xs text-slate-600 block mb-1">Repeat every</label>
+                <div class="flex gap-2 items-center">
+                    <input type="number" id="recInterval" min="1" value="2" class="border p-2 rounded w-24">
+                    <select id="recUnit" class="border p-2 rounded flex-1" onchange="updateCustomUnit()">
+                        <option value="days">days</option>
+                        <option value="weeks">weeks</option>
+                        <option value="months">months</option>
+                    </select>
+                </div>
+            </div>
+            <div id="recCustomWeekdays" class="hidden">
+                <label class="text-xs text-slate-600 block mb-1">On these days</label>
+                <div class="flex gap-1 flex-wrap" id="recCustomWeekdayDays"></div>
+            </div>
+            <div id="recCustomMonthly" class="hidden space-y-2">
+                <div>
+                    <label class="text-xs text-slate-600 block mb-1">Pattern</label>
+                    <select id="recCustomMonthlyMode" class="border p-2 rounded w-full" onchange="updateMonthlyMode('recCustom')">
+                        <option value="day">On day of month</option>
+                        <option value="weekday">On nth weekday of month</option>
+                    </select>
+                </div>
+                <div id="recCustomMonthlyDay">
+                    <label class="text-xs text-slate-600 block mb-1">Day of month (1–31)</label>
+                    <input type="number" id="recCustomDayOfMonth" min="1" max="31" value="1" class="border p-2 rounded w-full">
+                </div>
+                <div id="recCustomMonthlyWeekday" class="hidden">
+                    <div class="flex gap-2">
+                        <select id="recCustomNth" class="border p-2 rounded flex-1">
+                            <option value="1">First</option>
+                            <option value="2">Second</option>
+                            <option value="3">Third</option>
+                            <option value="4">Fourth</option>
+                            <option value="-1">Last</option>
+                        </select>
+                        <select id="recCustomNthWeekday" class="border p-2 rounded flex-1"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <div class="flex-1">
+                <label class="text-xs text-slate-600 block mb-1">Time</label>
+                <input type="time" id="recTime" class="border p-2 rounded w-full" value="09:00">
+            </div>
+            <div class="w-36">
+                <label class="text-xs text-slate-600 block mb-1">Duration (min)</label>
+                <input type="number" id="recDuration" min="15" step="15" value="60" class="border p-2 rounded w-full">
+            </div>
+        </div>
+
+        <div id="recSummary" class="text-xs italic text-slate-600"></div>
+
+        <div class="flex gap-2">
+            <button onclick="saveRecurrence()" class="bg-green-600 text-white p-2 rounded flex-1">Save</button>
+            <button id="recRemoveBtn" onclick="removeRecurrence()" class="bg-red-600 text-white p-2 rounded flex-1 hidden">Remove</button>
+            <button onclick="closeRecurrenceModal()" class="bg-slate-200 text-slate-900 p-2 rounded flex-1">Cancel</button>
+        </div>
+    </div>
+</div>

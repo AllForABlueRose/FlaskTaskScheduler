@@ -1,9 +1,24 @@
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
 from werkzeug.security import generate_password_hash
 
 DB = 'scheduler.db'
+
+
+@contextmanager
+def db_connect():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db():
@@ -49,6 +64,8 @@ def init_db():
     task_cols = [r[1] for r in c.execute("PRAGMA table_info(tasks)").fetchall()]
     if 'input' not in task_cols:
         c.execute("ALTER TABLE tasks ADD COLUMN input TEXT DEFAULT ''")
+    if 'recurrence' not in task_cols:
+        c.execute("ALTER TABLE tasks ADD COLUMN recurrence TEXT")
 
     schedule_exists = c.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='schedule'"
@@ -86,9 +103,24 @@ def init_db():
                 slot TEXT NOT NULL,
                 task_id TEXT,
                 duration INTEGER DEFAULT 1,
-                last_run_at TEXT
+                last_run_at TEXT,
+                is_recurring INTEGER DEFAULT 0,
+                input TEXT
             )
         ''')
+
+    schedule_cols = [r[1] for r in c.execute("PRAGMA table_info(schedule)").fetchall()]
+    if 'is_recurring' not in schedule_cols:
+        c.execute("ALTER TABLE schedule ADD COLUMN is_recurring INTEGER DEFAULT 0")
+    if 'input' not in schedule_cols:
+        c.execute("ALTER TABLE schedule ADD COLUMN input TEXT")
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS meta(
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
 
     conn.commit()
     conn.close()

@@ -1,0 +1,31 @@
+<div id="chipModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl p-5 w-[420px] max-w-full max-h-[85vh] overflow-y-auto shadow-2xl space-y-3">
+        <div>
+            <div id="chipTaskName" class="text-xl font-bold"></div>
+            <div id="chipSlotInfo" class="text-xs text-slate-500"></div>
+        </div>
+
+        <div class="space-y-1">
+            <label class="text-xs text-slate-600 block">Input (this occurrence)</label>
+            <textarea
+                id="chipInput"
+                rows="4"
+                class="border p-2 rounded w-full"
+                placeholder=""></textarea>
+            <label class="flex items-center gap-2 text-xs text-slate-600 mt-1">
+                <input type="checkbox" id="chipUseDefault" onchange="toggleChipUseDefault()">
+                Use task default input
+            </label>
+        </div>
+
+        <div id="chipRuleSection" class="hidden">
+            <button onclick="editRuleFromChip()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Edit recurrence rule…</button>
+        </div>
+        <button onclick="editTaskFromChip()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Edit task…</button>
+
+        <div class="flex gap-2 pt-2">
+            <button onclick="saveChipInput()" class="bg-green-600 text-white p-2 rounded flex-1">Save</button>
+            <button onclick="closeChipModal()" class="bg-slate-200 text-slate-900 p-2 rounded flex-1">Cancel</button>
+        </div>
+    </div>
+</div>

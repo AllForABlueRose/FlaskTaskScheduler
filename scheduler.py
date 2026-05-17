@@ -1,9 +1,9 @@
-import sqlite3
 import threading
 import time as _time
 from datetime import datetime
 
-from db import DB
+from db import db_connect
+from recurrence import ensure_range_materialized, needs_daily_check
 
 
 def parse_input(text):
@@ -42,30 +42,33 @@ def tick_scheduler():
     now = datetime.now()
     quarter = now.minute // 15
     quarter_start = now.replace(minute=quarter * 15, second=0, microsecond=0)
-    slot_key = now.strftime('%a %m/%d') + f'-{now.hour}-{quarter}'
+    slot_key = f'{now.date().isoformat()}-{now.hour}-{quarter}'
 
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
+    with db_connect() as conn:
+        if needs_daily_check(conn, now.date()):
+            try:
+                ensure_range_materialized(conn, now.date())
+            except Exception as e:
+                print(f'[scheduler] materialization error: {e}', flush=True)
 
-    rows = conn.execute(
-        '''SELECT s.id, s.slot, s.last_run_at, t.code, t.name, t.input
-           FROM schedule s JOIN tasks t ON t.id = s.task_id
-           WHERE s.slot = ?''',
-        (slot_key,)
-    ).fetchall()
+        rows = conn.execute(
+            '''SELECT s.id, s.slot, s.last_run_at, s.input AS row_input,
+                      t.code, t.name, t.input AS task_input
+               FROM schedule s JOIN tasks t ON t.id = s.task_id
+               WHERE s.slot = ?''',
+            (slot_key,)
+        ).fetchall()
 
-    to_run = []
-    for row in rows:
-        if row['last_run_at'] and row['last_run_at'] >= quarter_start.isoformat():
-            continue
-        conn.execute(
-            'UPDATE schedule SET last_run_at=? WHERE id=?',
-            (now.isoformat(), row['id'])
-        )
-        to_run.append((row['name'], row['code'], row['input']))
-
-    conn.commit()
-    conn.close()
+        to_run = []
+        for row in rows:
+            if row['last_run_at'] and row['last_run_at'] >= quarter_start.isoformat():
+                continue
+            conn.execute(
+                'UPDATE schedule SET last_run_at=? WHERE id=?',
+                (now.isoformat(), row['id'])
+            )
+            input_text = row['row_input'] if row['row_input'] is not None else row['task_input']
+            to_run.append((row['name'], row['code'], input_text))
 
     for name, code, input_text in to_run:
         threading.Thread(

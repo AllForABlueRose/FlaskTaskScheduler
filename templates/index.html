@@ -4,91 +4,28 @@
     <title>Scheduler</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .dropzone {
-            background-image:
-                linear-gradient(to bottom, transparent 35px, rgba(15,23,42,0.2) 35px, rgba(15,23,42,0.2) 36px, transparent 36px),
-                linear-gradient(to bottom, transparent 71px, rgba(15,23,42,0.4) 71px, rgba(15,23,42,0.4) 73px, transparent 73px),
-                linear-gradient(to bottom, transparent 107px, rgba(15,23,42,0.2) 107px, rgba(15,23,42,0.2) 108px, transparent 108px);
-            background-size: 7px 100%, 12px 100%, 7px 100%;
-            background-position: 0 0, 0 0, 0 0;
-            background-repeat: no-repeat;
-        }
-        body.night-mode .dropzone {
-            background-image:
-                linear-gradient(to bottom, transparent 35px, rgba(226,232,240,0.35) 35px, rgba(226,232,240,0.35) 36px, transparent 36px),
-                linear-gradient(to bottom, transparent 71px, rgba(226,232,240,0.6) 71px, rgba(226,232,240,0.6) 73px, transparent 73px),
-                linear-gradient(to bottom, transparent 107px, rgba(226,232,240,0.35) 107px, rgba(226,232,240,0.35) 108px, transparent 108px);
-            background-size: 7px 100%, 12px 100%, 7px 100%;
-            background-position: 0 0, 0 0, 0 0;
-            background-repeat: no-repeat;
-        }
-        body.night-mode {
-            background-color: #0f172a;
-            color: #e2e8f0;
-        }
-        body.night-mode #calendarGrid {
-            background-color: #1e293b;
-        }
-        body.night-mode #calendarGrid > div {
-            border-color: #334155;
-            color: #e2e8f0;
-        }
-        body.night-mode .hour-cell.text-slate-500 {
-            color: #94a3b8;
-        }
-        body.night-mode .day-header .text-slate-500 {
-            color: #94a3b8;
-        }
-        body.night-mode .w-96.bg-white {
-            background-color: #1e293b;
-            color: #e2e8f0;
-        }
-        body.night-mode #taskModal .bg-white {
-            background-color: #1e293b;
-            color: #e2e8f0;
-        }
-        body.night-mode input,
-        body.night-mode textarea {
-            background-color: #0f172a;
-            color: #e2e8f0;
-            border-color: #334155;
-        }
-        body.night-mode #modeToggle {
-            background-color: #f1f5f9;
-            color: #0f172a;
-        }
-        body.night-mode #modeToggle:hover {
-            background-color: #cbd5e1;
-        }
-        #calendarGrid.grayed-out {
-            opacity: 0.5;
-            filter: saturate(0.3);
-        }
-        #viewToggle [data-view-btn].active-view {
-            background-color: white;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-            font-weight: 600;
-        }
-        body.night-mode #viewToggle {
-            background-color: #334155;
-            color: #e2e8f0;
-        }
-        body.night-mode #viewToggle [data-view-btn].active-view {
-            background-color: #475569;
-            color: #f1f5f9;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
-<body class="bg-slate-100 h-screen overflow-hidden" data-today="{{ today_str }}" data-role="{{ role }}">
+<body class="bg-slate-100 h-screen overflow-hidden flex flex-col"
+      data-today="{{ today_iso }}"
+      data-range-start="{{ range_start_iso }}"
+      data-range-end="{{ range_end_iso }}"
+      data-role="{{ role }}">
 
-<div class="flex h-full">
+<div class="flex flex-1 min-h-0">
 
     <!-- Outlook style calendar -->
-    <div class="flex-1 p-4 overflow-auto">
-        <div class="flex items-center justify-between mb-4">
-            <h1 id="viewTitle" class="text-3xl font-bold">Full Week View</h1>
-            <div id="viewToggle" class="inline-flex bg-slate-200 rounded-xl p-1 text-sm">
+    <div class="flex-1 p-4 overflow-auto relative">
+        <div class="flex items-center justify-between mb-4 gap-4">
+            <div class="flex items-center gap-3 min-w-0">
+                <div id="dateNav" class="inline-flex bg-slate-200 rounded-xl p-1 text-sm gap-1 shrink-0">
+                    <button onclick="navigateCalendar(-1)" class="px-3 py-1 rounded-lg hover:bg-white" title="Previous">←</button>
+                    <button onclick="navigateToday()" class="px-3 py-1 rounded-lg hover:bg-white font-semibold">Today</button>
+                    <button onclick="navigateCalendar(1)" class="px-3 py-1 rounded-lg hover:bg-white" title="Next">→</button>
+                </div>
+                <h1 id="viewTitle" class="text-2xl font-bold truncate"></h1>
+            </div>
+            <div id="viewToggle" class="inline-flex bg-slate-200 rounded-xl p-1 text-sm shrink-0">
                 <button onclick="applyView('day')" data-view-btn="day" class="px-3 py-1 rounded-lg">Day</button>
                 <button onclick="applyView('weekday')" data-view-btn="weekday" class="px-3 py-1 rounded-lg">Weekday</button>
                 <button onclick="applyView('week')" data-view-btn="week" class="px-3 py-1 rounded-lg">Full Week</button>
@@ -98,10 +35,10 @@
         <div id="calendarGrid" class="relative grid grid-cols-8 gap-0 bg-white rounded-2xl shadow overflow-hidden">
 
             <div></div>
-            {% for day in days %}
-                <div class="day-header border-l p-2 text-center leading-tight" data-day="{{ day }}">
-                    <div class="font-semibold">{{ day.split(' ')[0] }}</div>
-                    <div class="text-xs text-slate-500">{{ day.split(' ')[1] }}</div>
+            {% for i in range(7) %}
+                <div class="day-header border-l p-2 text-center leading-tight" data-day-index="{{ i }}">
+                    <div class="day-header-name font-semibold"></div>
+                    <div class="day-header-date text-xs text-slate-500"></div>
                 </div>
             {% endfor %}
 
@@ -110,11 +47,10 @@
                     {{ '%02d:00' % hour }}
                 </div>
 
-                {% for day in days %}
+                {% for i in range(7) %}
                 <div
                     class="border-t border-l h-36 relative dropzone hour-cell"
-                    data-slot="{{ day }}-{{ hour }}"
-                    data-day="{{ day }}"
+                    data-day-index="{{ i }}"
                     data-hour="{{ hour }}"
                     ondragover="allowDrop(event)"
                     ondrop="dropTask(event)">
@@ -128,67 +64,60 @@
             </div>
 
         </div>
+
+        <div id="outOfRangeOverlay" class="hidden absolute inset-0 flex items-center justify-center bg-slate-100/95 z-30">
+            <div class="bg-white rounded-2xl shadow-2xl px-10 py-12 text-center">
+                <div id="outOfRangeMessage" class="text-2xl font-semibold text-slate-700"></div>
+                <button onclick="navigateToday()" class="mt-6 bg-slate-900 text-white px-4 py-2 rounded-lg">Back to today</button>
+            </div>
+        </div>
     </div>
 
 
     <!-- task bar -->
-    <div class="w-1/5 shrink-0 bg-white shadow-2xl p-5 overflow-auto">
+    <div class="w-1/5 shrink-0 bg-white shadow-2xl flex flex-col overflow-hidden">
 
-        <button
-            onclick="openModal()"
-            class="w-full bg-slate-900 text-white p-3 rounded-xl mb-4">
-            Create Task
-        </button>
-
-        <div id="taskModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-2xl p-6 w-[600px] shadow-2xl">
-    <div id="taskForm" class="space-y-3">
-
-            <input id="taskName" class="border p-2 rounded w-full" placeholder="Name">
-
-            <textarea id="taskDescription" class="border p-2 rounded w-full" placeholder="Description"></textarea>
-
-            <input id="taskTags" class="border p-2 rounded w-full" placeholder="Tags comma separated">
-
-            <input type="color" id="taskColor" class="w-full h-10" value="#3b82f6">
-
+        <div id="standardArea"
+             class="p-5 overflow-auto flex-1 min-h-0"
+             ondragover="allowDropStandard(event)"
+             ondragleave="leaveStandard(event)"
+             ondrop="dropStandard(event)">
             <button
-                onclick="toggleCode()"
-                class="text-sm underline">
-                ▼ Code
+                onclick="openModal()"
+                class="w-full bg-slate-900 text-white p-3 rounded-xl mb-4">
+                Create Task
             </button>
 
-            <textarea
-                id="taskCode"
-                class="border p-2 rounded w-full hidden"
-                rows="8"
-                oninput="updateInputVisibility()"
-                placeholder="Python script / command (use 'value' if input is provided)"></textarea>
+            <div id="taskList" class="space-y-3"></div>
+        </div>
 
-            <div id="taskInputSection" class="hidden space-y-1">
-                <label class="text-xs text-slate-600">Input (one per line, comma-separated, or single value)</label>
-                <textarea
-                    id="taskInput"
-                    class="border p-2 rounded w-full"
-                    rows="3"
-                    placeholder="value1, value2, value3 — or one per line"></textarea>
+        <div id="recurringArea"
+             class="border-t border-slate-200 bg-slate-50 overflow-hidden flex flex-col shrink-0"
+             ondragover="allowDropRecurring(event)"
+             ondragleave="leaveRecurring(event)"
+             ondrop="dropRecurring(event)">
+            <div class="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center justify-between shrink-0 select-none">
+                <span>Recurring Tasks</span>
+                <span id="recurringCount" class="text-[10px] text-slate-400 normal-case font-normal"></span>
             </div>
-
-            <button
-                id="saveBtn"
-                onclick="saveTask()"
-                class="bg-green-600 text-white p-2 rounded w-full">
-                Save
-            </button>
-
-                <button onclick="closeModal()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Close</button>
-    </div>
-</div>
-</div>
-
-        <div id="taskList" class="space-y-3"></div>
+            <div id="recurringList" class="overflow-auto px-3 pb-3 space-y-2 flex-1 min-h-0"></div>
+        </div>
 
     </div>
+
+    <div id="terminalPanel" class="hidden flex flex-col bg-slate-900 text-slate-100 font-mono text-xs shrink-0 h-1/5 border-t border-slate-700">
+        <div class="px-3 py-1 border-b border-slate-700 text-slate-400 select-none flex items-center justify-between">
+            <span>terminal</span>
+            <span class="opacity-50">Ctrl+Shift+M+D+X to toggle</span>
+        </div>
+        <div id="terminalOutput" class="flex-1 overflow-auto px-3 py-1 space-y-0.5 leading-snug"></div>
+    </div>
+
+    {% include '_task_modal.html' %}
+
+    {% include '_recurrence_modal.html' %}
+
+    {% include '_chip_modal.html' %}
 
 <button id="modeToggle"
         onclick="toggleMode()"
@@ -196,45 +125,22 @@
 </button>
 
 {% if role == 'admin' %}
-<div id="adminTrigger"
-     class="fixed top-3 left-1/2 -translate-x-1/2 bg-slate-900 text-white w-7 h-7 rounded-full shadow z-20 flex items-center justify-center opacity-10 hover:opacity-30 cursor-grab transition-opacity select-none">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5">
-        <path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3c0-2.9-2.35-5.25-5.25-5.25zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clip-rule="evenodd" />
-    </svg>
-</div>
-
-<div id="adminPanel" class="hidden fixed inset-0 bg-slate-900/95 z-40 overflow-auto p-6">
-    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h2 class="text-2xl font-bold">Admin · Users</h2>
-            <button onclick="closeAdminPanel()" class="bg-slate-200 px-3 py-1 rounded">Close</button>
-        </div>
-
-        <h3 class="font-semibold text-lg mb-2">Pending requests</h3>
-        <div id="pendingUsers" class="mb-6 space-y-2"></div>
-
-        <h3 class="font-semibold text-lg mb-2">Active users</h3>
-        <div id="activeUsers" class="space-y-2"></div>
-    </div>
-</div>
-
-<div id="resetPasswordModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div class="bg-white rounded-2xl p-6 w-[420px] shadow-2xl">
-        <div class="space-y-3">
-            <h2 class="text-xl font-bold">Reset password</h2>
-            <div id="resetPasswordTarget" class="text-sm text-slate-600"></div>
-            <input id="resetPasswordInput" type="text" class="border p-2 rounded w-full" placeholder="New password" autocomplete="off">
-            <div id="resetPasswordError" class="text-red-600 text-sm hidden"></div>
-            <button onclick="submitResetPassword()" class="bg-green-600 text-white p-2 rounded w-full">Save</button>
-            <button onclick="closeResetPassword()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Close</button>
-        </div>
-    </div>
-</div>
+    {% include '_admin_panel.html' %}
 {% endif %}
 
 <div id="hoverPanel" class="fixed pointer-events-none bg-slate-800 text-white p-3 rounded-xl shadow-2xl text-xs max-w-sm z-50 hidden"></div>
 
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/state.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dates.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calendar.js') }}"></script>
+<script src="{{ url_for('static', filename='js/schedule.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tasks.js') }}"></script>
+<script src="{{ url_for('static', filename='js/recurrence.js') }}"></script>
+{% if role == 'admin' %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endif %}
+<script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
 </body>
 </html>

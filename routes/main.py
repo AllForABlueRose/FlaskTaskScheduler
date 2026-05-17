@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import date
 
 from flask import Blueprint, render_template, session
 
+from db import db_connect
+from recurrence import ensure_range_materialized, needs_daily_check, valid_range
 from routes.auth import current_user
 
 main_bp = Blueprint('main', __name__)
@@ -14,20 +16,18 @@ def home():
         session.clear()
         return render_template('login.html')
 
-    today = datetime.now()
-    start = today - timedelta(days=today.weekday())
+    today = date.today()
+    with db_connect() as conn:
+        if needs_daily_check(conn, today):
+            ensure_range_materialized(conn, today)
 
-    days = [
-        (start + timedelta(days=i)).strftime('%a %m/%d')
-        for i in range(7)
-    ]
-
-    today_str = today.strftime('%a %m/%d')
+    range_start, range_end = valid_range(today)
 
     return render_template(
         'index.html',
-        days=days,
-        today_str=today_str,
+        today_iso=today.isoformat(),
+        range_start_iso=range_start.isoformat(),
+        range_end_iso=range_end.isoformat(),
         role=user['role'],
         username=user['username'],
     )
