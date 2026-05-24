@@ -12,6 +12,7 @@ function initEvents(){
     }
     renderEventsMonthHeader();
     wireEventsNav();
+    wirePlannerDrop();
     loadEvents();
     loadEventCategories();
     renderEventsMonth();
@@ -533,5 +534,222 @@ function updateEventsOutOfRange(){
         overlay.classList.remove('hidden');
     } else {
         overlay.classList.add('hidden');
+    }
+}
+
+/* ── Planner CSV Import ── */
+
+function wirePlannerDrop(){
+    const zone = document.getElementById('plannerDropZone');
+    const input = document.getElementById('plannerFileInput');
+    if (!zone || !input) return;
+
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+    });
+    input.addEventListener('change', () => {
+        if (input.files.length) handlePlannerFile(input.files[0]);
+        input.value = '';
+    });
+
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('drag-over');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const file = (e.dataTransfer.files || [])[0];
+        if (file) handlePlannerFile(file);
+    });
+}
+
+function handlePlannerFile(file){
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.csv') && !name.endsWith('.txt')) {
+        setPlannerStatus('error', 'Please use a CSV file (save the Excel export as CSV first)');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => processPlannerCSV(reader.result);
+    reader.onerror = () => setPlannerStatus('error', 'Failed to read file');
+    reader.readAsText(file);
+}
+
+function parsePlannerCSV(text){
+    const lines = [];
+    let current = [];
+    let field = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++){
+        const ch = text[i];
+        if (inQuotes){
+            if (ch === '"' && text[i + 1] === '"'){ field += '"'; i++; }
+            else if (ch === '"') inQuotes = false;
+            else field += ch;
+        } else {
+            if (ch === '"') inQuotes = true;
+            else if (ch === ',') { current.push(field); field = ''; }
+            else if (ch === '\r' || ch === '\n') {
+                if (ch === '\r' && text[i + 1] === '\n') i++;
+                current.push(field);
+                field = '';
+                if (current.length > 1 || current[0] !== '') lines.push(current);
+                current = [];
+            } else field += ch;
+        }
+    }
+    current.push(field);
+    if (current.length > 1 || current[0] !== '') lines.push(current);
+
+    if (lines.length < 2) return [];
+    const headers = lines[0].map(h => h.trim());
+    const rows = [];
+    for (let i = 1; i < lines.length; i++){
+        const row = {};
+        for (let j = 0; j < headers.length; j++){
+            row[headers[j]] = (lines[i][j] || '').trim();
+        }
+        rows.push(row);
+    }
+    return rows;
+}
+
+function findColumn(row, ...candidates){
+    const keys = Object.keys(row);
+    for (const c of candidates){
+        const lower = c.toLowerCase();
+        const match = keys.find(k => k.toLowerCase() === lower);
+        if (match && row[match]) return row[match];
+    }
+    return '';
+}
+
+function parsePlannerDate(str){
+    if (!str) return null;
+    const s = str.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const slash = s.split('/');
+    if (slash.length === 3){
+        const [a, b, c] = slash.map(Number);
+        if (isNaN(a) || isNaN(b) || isNaN(c)) return null;
+        const year = c > 100 ? c : c + 2000;
+        if (a > 12) return `${year}-${String(b).padStart(2, '0')}-${String(a).padStart(2, '0')}`;
+        return `${year}-${String(a).padStart(2, '0')}-${String(b).padStart(2, '0')}`;
+    }
+    return null;
+}
+
+async function processPlannerCSV(text){
+    const rows = parsePlannerCSV(text);
+    if (!rows.length){
+        setPlannerStatus('error', 'No data rows found in CSV');
+        return;
+    }
+
+    const sample = rows[0];
+    const hasTitle = findColumn(sample, 'Task Name', 'Task name', 'Title', 'Name');
+    if (!hasTitle && !Object.keys(sample).some(k => k.toLowerCase().includes('task'))){
+        setPlannerStatus('error', 'Could not find a "Task Name" column');
+        return;
+    }
+
+    const items = [];
+    let skippedCompleted = 0;
+    let skippedNoDates = 0;
+
+    for (const row of rows){
+        const progress = findColumn(row, 'Progress', 'Status', 'Percent Complete');
+        if (/completed|100%/i.test(progress)){
+            skippedCompleted++;
+            continue;
+        }
+
+        const title = findColumn(row, 'Task Name', 'Task name', 'Title', 'Name');
+        if (!title) continue;
+
+        const startRaw = findColumn(row, 'Start Date', 'Start date', 'StartDate');
+        const dueRaw = findColumn(row, 'Due Date', 'Due date', 'DueDate');
+        const startDate = parsePlannerDate(startRaw);
+        const dueDate = parsePlannerDate(dueRaw);
+
+        if (!startDate && !dueDate){
+            skippedNoDates++;
+            continue;
+        }
+
+        const bucket = findColumn(row, 'Bucket Name', 'Bucket name', 'Bucket');
+        const description = findColumn(row, 'Description', 'Notes');
+        const catColor = categoryColor(bucket);
+
+        items.push({
+            title,
+            start_date: startDate || dueDate,
+            end_date: dueDate || startDate,
+            category: bucket || null,
+            color: catColor,
+            description: description || null,
+        });
+    }
+
+    if (!items.length){
+        const parts = [];
+        if (skippedCompleted) parts.push(`${skippedCompleted} completed`);
+        if (skippedNoDates) parts.push(`${skippedNoDates} without dates`);
+        setPlannerStatus('error', 'No active tasks to import' + (parts.length ? ` (${parts.join(', ')})` : ''));
+        return;
+    }
+
+    setPlannerStatus(null, 'Importing...');
+
+    try {
+        const res = await fetch('/api/events/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(items),
+        });
+        if (!res.ok){
+            const err = await res.json().catch(() => ({}));
+            setPlannerStatus('error', err.error || 'Import failed');
+            return;
+        }
+        const result = await res.json();
+        const parts = [];
+        if (result.imported) parts.push(`${result.imported} imported`);
+        if (result.skipped) parts.push(`${result.skipped} skipped`);
+        if (skippedCompleted) parts.push(`${skippedCompleted} completed`);
+        if (skippedNoDates) parts.push(`${skippedNoDates} without dates`);
+        setPlannerStatus('success', parts.join(', '));
+        await loadEvents();
+        await loadEventCategories();
+    } catch {
+        setPlannerStatus('error', 'Network error during import');
+    }
+}
+
+function categoryColor(name){
+    if (!name) return '#3b82f6';
+    const lower = name.toLowerCase();
+    const match = eventCategoriesCache.find(c => c.name.toLowerCase() === lower);
+    return match ? (match.color || '#3b82f6') : '#3b82f6';
+}
+
+let plannerStatusTimer = null;
+function setPlannerStatus(type, message){
+    const zone = document.getElementById('plannerDropZone');
+    const text = document.getElementById('plannerDropText');
+    if (!zone || !text) return;
+    zone.classList.remove('drop-success', 'drop-error');
+    if (type) zone.classList.add(type === 'success' ? 'drop-success' : 'drop-error');
+    text.textContent = message;
+    clearTimeout(plannerStatusTimer);
+    if (type) {
+        plannerStatusTimer = setTimeout(() => {
+            zone.classList.remove('drop-success', 'drop-error');
+            text.textContent = 'Drop a Planner CSV here to import tasks';
+        }, 6000);
     }
 }

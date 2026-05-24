@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden flex flex-col"
       data-today="{{ today_iso }}"
@@ -19,6 +25,7 @@
     <nav class="tab-nav">
         <a href="{{ url_for('main.schedule_view') }}" data-tab="schedule" class="tab-btn">Schedule</a>
         <a href="{{ url_for('main.events_view') }}" data-tab="events" class="tab-btn">Events</a>
+        <a href="{{ url_for('main.applications_view') }}" data-tab="applications" class="tab-btn">Applications</a>
     </nav>
 </header>
 
@@ -148,6 +155,12 @@
                 <button onclick="navigateEventsToday()" class="mt-6 bg-slate-900 text-white px-4 py-2 rounded-lg">Back to today</button>
             </div>
         </div>
+
+        <div id="plannerDropZone" class="planner-fab" role="button" tabindex="0">
+            <input id="plannerFileInput" type="file" accept=".csv,.txt" class="hidden">
+            <span class="planner-fab-icon">+</span>
+            <span id="plannerDropText" class="planner-fab-label">Drop a Planner CSV here to import tasks</span>
+        </div>
     </div>
 
     <aside id="eventsSidebar" class="events-sidebar hidden w-1/5 shrink-0 bg-white shadow-2xl flex flex-col overflow-hidden">
@@ -160,6 +173,54 @@
             <div id="eventsList" class="space-y-2"></div>
         </div>
     </aside>
+</section>
+
+<section id="view-applications" class="view view-applications flex flex-col flex-1 min-h-0 {{ '' if initial_tab == 'applications' else 'view-hidden' }}">
+    <div class="app-input-bar flex items-center gap-3 p-4 pb-2 shrink-0">
+        <input id="appFolderInput"
+               type="text"
+               placeholder="Enter folder path..."
+               class="flex-1 px-3 py-2 border rounded-lg text-sm">
+        <button onclick="fetchApplicationFiles()"
+                class="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800">
+            Fetch
+        </button>
+        <span id="appFolderStatus" class="text-sm text-red-600 hidden"></span>
+    </div>
+
+    <div class="flex flex-1 min-h-0">
+        <div class="w-1/2 flex flex-col border-r border-slate-200">
+            <div class="flex-1 overflow-auto p-4 min-h-0">
+                <div id="appFileList" class="space-y-1">
+                    <div class="text-sm text-slate-500 italic">Enter a folder path and click Fetch</div>
+                </div>
+            </div>
+            <div id="appApprovalArea" class="flex-1 border-t border-slate-200 flex flex-col min-h-0">
+                <div class="px-4 pt-3 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wide shrink-0">Approved Files</div>
+                <div id="appApprovedTree" class="flex-1 overflow-auto px-4 pb-3 min-h-0"></div>
+            </div>
+        </div>
+
+        <div class="w-1/2 flex flex-col min-h-0 relative">
+            <div id="appPageNav" class="flex items-center justify-between px-4 py-2 border-b border-slate-200 shrink-0 hidden">
+                <button onclick="navigateAppPage(-1)" class="px-3 py-1 bg-slate-200 rounded-lg hover:bg-slate-300 text-sm">← Prev</button>
+                <span id="appPageIndicator" class="text-sm font-medium text-slate-600"></span>
+                <button onclick="navigateAppPage(1)" class="px-3 py-1 bg-slate-200 rounded-lg hover:bg-slate-300 text-sm">Next →</button>
+            </div>
+            <div id="appPreviewArea" class="flex-1 overflow-auto p-4 flex items-start justify-center min-h-0">
+                <div class="text-sm text-slate-500 italic">Select a file to preview</div>
+            </div>
+            <div id="appApprovedBadge" class="app-approved-badge hidden" title="Approved file from local record">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            </div>
+            <div id="appActionBar" class="flex items-center justify-center gap-3 px-4 py-3 border-t border-slate-200 shrink-0 hidden">
+                <button onclick="setAppFileStatus('approved')" class="app-action-btn app-action-approve">Approve</button>
+                <button onclick="setAppFileStatus('dismissed')" class="app-action-btn app-action-dismiss">Dismiss</button>
+                <button onclick="setAppFileStatus('flagged')" class="app-action-btn app-action-flag">Flag</button>
+                <button onclick="setAppFileStatus('rejected')" class="app-action-btn app-action-reject">Reject</button>
+            </div>
+        </div>
+    </div>
 </section>
 
 {% include '_task_modal.html' %}
@@ -200,6 +261,7 @@
 <script src="{{ url_for('static', filename='js/tasks.js') }}"></script>
 <script src="{{ url_for('static', filename='js/recurrence.js') }}"></script>
 <script src="{{ url_for('static', filename='js/events.js') }}"></script>
+<script src="{{ url_for('static', filename='js/applications.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
 {% if role == 'admin' %}
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>

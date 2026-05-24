@@ -92,6 +92,46 @@ def delete_event(event_id):
     return jsonify({'ok': True})
 
 
+@events_bp.route('/api/events/import', methods=['POST'])
+@login_required
+def import_events():
+    items = request.json
+    if not isinstance(items, list):
+        return jsonify({'error': 'expected array of events'}), 400
+    imported = []
+    skipped = []
+    with db_connect() as conn:
+        existing = {
+            row['title'].strip().lower()
+            for row in conn.execute('SELECT title FROM events').fetchall()
+        }
+        for item in items:
+            data, err = _normalize(item)
+            if err:
+                skipped.append({'title': (item.get('title') or '')[:80], 'reason': err})
+                continue
+            key = data['title'].lower()
+            if key in existing:
+                skipped.append({'title': data['title'], 'reason': 'already exists'})
+                continue
+            event_id = str(uuid.uuid4())
+            conn.execute(
+                'INSERT INTO events (id, title, start_date, end_date, category, color, description, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (event_id, data['title'], data['start_date'], data['end_date'],
+                 data['category'], data['color'], data['description'],
+                 datetime.now().isoformat())
+            )
+            existing.add(key)
+            imported.append(data['title'])
+    return jsonify({
+        'imported': len(imported),
+        'skipped': len(skipped),
+        'imported_titles': imported,
+        'skipped_details': skipped,
+    })
+
+
 @events_bp.route('/api/event-categories')
 @login_required
 def list_categories():

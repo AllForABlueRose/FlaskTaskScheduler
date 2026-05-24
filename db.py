@@ -137,5 +137,21 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_date)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_events_end ON events(end_date)')
 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS app_file_status(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            status TEXT NOT NULL,
+            file_mtime TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_app_file_status_folder ON app_file_status(folder)')
+
+    afs_cols = [r[1] for r in c.execute("PRAGMA table_info(app_file_status)").fetchall()]
+    if 'approved_path' not in afs_cols:
+        c.execute("ALTER TABLE app_file_status ADD COLUMN approved_path TEXT")
+
     conn.commit()
     conn.close()

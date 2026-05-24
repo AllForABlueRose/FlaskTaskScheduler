@@ -8,6 +8,7 @@ import request_log
 from db import init_db
 from keep_awake import prevent_sleep
 from routes.auth import auth_bp
+from routes.applications import applications_bp
 from routes.events import events_bp
 from routes.logs import logs_bp
 from routes.main import main_bp
@@ -25,6 +26,7 @@ def create_app():
     app.register_blueprint(tasks_bp)
     app.register_blueprint(schedule_bp)
     app.register_blueprint(events_bp)
+    app.register_blueprint(applications_bp)
     app.register_blueprint(logs_bp)
     request_log.register(app)
     return app

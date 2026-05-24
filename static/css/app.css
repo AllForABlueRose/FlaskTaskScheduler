@@ -390,6 +390,125 @@ body.night-mode .tab-btn.tab-btn-active {
     opacity: 0;
 }
 
+/* Planner CSV import FAB */
+.planner-fab {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    background-color: #0f172a;
+    color: white;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    opacity: 0.5;
+    overflow: hidden;
+    transition: width 250ms ease, height 250ms ease, opacity 200ms ease, background-color 200ms ease;
+    user-select: none;
+}
+.planner-fab:hover,
+.planner-fab:focus-visible {
+    opacity: 1;
+    width: 14rem;
+    height: 4.5rem;
+    justify-content: center;
+}
+.planner-fab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    font-size: 1.25rem;
+    font-weight: 300;
+    line-height: 1;
+    transition: height 250ms ease, width 250ms ease;
+}
+.planner-fab:hover .planner-fab-icon,
+.planner-fab:focus-visible .planner-fab-icon {
+    height: 0;
+    width: 0;
+    overflow: hidden;
+}
+.planner-fab-label {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-align: center;
+    padding: 0 0.75rem;
+    opacity: 0;
+    white-space: normal;
+    transition: opacity 200ms ease 80ms;
+}
+.planner-fab:hover .planner-fab-label,
+.planner-fab:focus-visible .planner-fab-label {
+    opacity: 1;
+}
+.planner-fab.drag-over {
+    opacity: 1;
+    width: 14rem;
+    height: 4.5rem;
+    background-color: #1d4ed8;
+}
+.planner-fab.drag-over .planner-fab-icon {
+    height: 0;
+    width: 0;
+    overflow: hidden;
+}
+.planner-fab.drag-over .planner-fab-label {
+    opacity: 1;
+}
+.planner-fab.drop-success {
+    opacity: 1;
+    width: 14rem;
+    height: 4.5rem;
+    background-color: #15803d;
+}
+.planner-fab.drop-success .planner-fab-icon {
+    height: 0;
+    width: 0;
+    overflow: hidden;
+}
+.planner-fab.drop-success .planner-fab-label {
+    opacity: 1;
+}
+.planner-fab.drop-error {
+    opacity: 1;
+    width: 14rem;
+    height: 4.5rem;
+    background-color: #b91c1c;
+}
+.planner-fab.drop-error .planner-fab-icon {
+    height: 0;
+    width: 0;
+    overflow: hidden;
+}
+.planner-fab.drop-error .planner-fab-label {
+    opacity: 1;
+}
+body.night-mode .planner-fab {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+body.night-mode .planner-fab.drag-over {
+    background-color: #3b82f6;
+    color: white;
+}
+body.night-mode .planner-fab.drop-success {
+    background-color: #22c55e;
+    color: white;
+}
+body.night-mode .planner-fab.drop-error {
+    background-color: #ef4444;
+    color: white;
+}
+
 /* Events month grid */
 .events-month-header > div {
     text-align: center;
@@ -545,4 +664,412 @@ body.terminal-chord-on .terminal-panel.terminal-panel-open {
 }
 .terminal-output > div + div {
     margin-top: 1px;
+}
+
+/* ── Applications view ── */
+
+.app-file-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 100ms ease;
+}
+.app-file-row:hover {
+    background-color: #f1f5f9;
+}
+.app-file-row.app-file-selected {
+    background-color: #e2e8f0;
+    font-weight: 600;
+}
+.app-file-type-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.35rem;
+    border-radius: 0.25rem;
+    min-width: 2.2rem;
+    text-align: center;
+    color: white;
+    flex-shrink: 0;
+}
+.app-file-type-badge.type-image { background-color: #8b5cf6; }
+.app-file-type-badge.type-excel { background-color: #059669; }
+.app-file-type-badge.type-word  { background-color: #2563eb; }
+.app-file-type-badge.type-pdf   { background-color: #dc2626; }
+
+.app-file-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* File status styles */
+.app-file-approved {
+    background-color: #bbf7d0;
+    border: 2px solid transparent;
+}
+.app-file-approved:hover {
+    border-color: #16a34a;
+}
+.app-file-flagged {
+    background-color: #fde047;
+    border: 2px solid transparent;
+}
+.app-file-flagged:hover {
+    border-color: #ca8a04;
+}
+.app-file-rejected {
+    background-color: #fca5a5;
+    border: 2px solid transparent;
+}
+.app-file-rejected:hover {
+    border-color: #dc2626;
+}
+.app-file-rejected .app-file-name {
+    text-decoration: line-through;
+    color: #991b1b;
+}
+.app-file-ghost {
+    opacity: 0.5;
+    cursor: default;
+}
+.app-file-ghost:hover {
+    background-color: transparent;
+}
+
+/* Approved icon grid */
+.app-icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    gap: 0.5rem;
+}
+.app-icon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.25rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 100ms ease;
+    border: 2px solid transparent;
+}
+.app-icon-card:hover {
+    background-color: #e2e8f0;
+}
+.app-icon-card.app-icon-selected {
+    background-color: #dbeafe;
+    border-color: #3b82f6;
+}
+.app-icon-folder {
+    width: 2.5rem;
+    height: 2rem;
+    background: linear-gradient(135deg, #fbbf24 60%, #f59e0b 60%);
+    border-radius: 0.15rem 0.25rem 0.25rem 0.25rem;
+    position: relative;
+}
+.app-icon-folder::before {
+    content: '';
+    position: absolute;
+    top: -0.35rem;
+    left: 0;
+    width: 1.1rem;
+    height: 0.35rem;
+    background: #fbbf24;
+    border-radius: 0.15rem 0.15rem 0 0;
+}
+.app-icon-file {
+    width: 2rem;
+    height: 2.4rem;
+    border-radius: 0.15rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: white;
+    letter-spacing: 0.02em;
+}
+.app-icon-file-pdf   { background-color: #dc2626; }
+.app-icon-file-excel { background-color: #059669; }
+.app-icon-file-word  { background-color: #2563eb; }
+.app-icon-file-image { background-color: #8b5cf6; }
+.app-icon-label {
+    font-size: 0.65rem;
+    text-align: center;
+    word-break: break-word;
+    line-height: 1.2;
+    max-height: 2.4em;
+    overflow: hidden;
+    width: 100%;
+    color: #334155;
+}
+
+/* Approved file badge */
+.app-approved-badge {
+    position: absolute;
+    bottom: 3rem;
+    right: 3rem;
+    z-index: 10;
+    width: 1.75rem;
+    height: 1.75rem;
+    background-color: #22c55e;
+    color: white;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    cursor: default;
+}
+.app-approved-badge.hidden {
+    display: none;
+}
+
+/* Preview swipe cursor */
+.app-preview-grabbable {
+    cursor: grab;
+}
+.app-preview-grabbing {
+    cursor: grabbing;
+}
+
+/* Action buttons */
+.app-action-btn {
+    padding: 0.4rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: filter 120ms ease;
+}
+.app-action-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+.app-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.app-action-approve {
+    background-color: #22c55e;
+    color: white;
+}
+.app-action-approve:hover {
+    background-color: #16a34a;
+}
+.app-action-dismiss {
+    background-color: #e2e8f0;
+    color: #334155;
+}
+.app-action-dismiss:hover {
+    background-color: #cbd5e1;
+}
+.app-action-flag {
+    background-color: #fbbf24;
+    color: #78350f;
+}
+.app-action-flag:hover {
+    background-color: #f59e0b;
+}
+.app-action-reject {
+    background-color: #ef4444;
+    color: white;
+}
+.app-action-reject:hover {
+    background-color: #dc2626;
+}
+
+.app-preview-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+#appPdfCanvas {
+    display: block;
+    margin: 0 auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.app-excel-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.app-excel-table th {
+    background-color: #f1f5f9;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.app-excel-table td {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.app-excel-table tr:hover td {
+    background-color: #f8fafc;
+}
+
+.app-word-content {
+    max-width: 48rem;
+    margin: 0 auto;
+    line-height: 1.6;
+    font-size: 0.9375rem;
+}
+.app-word-content h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+.app-word-content h2 { font-size: 1.25rem; font-weight: 700; margin: 0.8rem 0 0.4rem; }
+.app-word-content h3 { font-size: 1.1rem; font-weight: 600; margin: 0.6rem 0 0.3rem; }
+.app-word-content p { margin: 0.3rem 0; }
+.app-docx-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+}
+.app-docx-table td {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+/* Applications night mode */
+body.night-mode .view-applications {
+    color: #e2e8f0;
+}
+body.night-mode .view-applications .border-slate-200 {
+    border-color: #334155;
+}
+body.night-mode .app-file-row:hover {
+    background-color: #334155;
+}
+body.night-mode .app-file-row.app-file-selected {
+    background-color: #475569;
+}
+body.night-mode #appPageNav {
+    border-color: #334155;
+}
+body.night-mode #appPageNav button {
+    background-color: #334155;
+    color: #e2e8f0;
+}
+body.night-mode #appPageNav button:hover {
+    background-color: #475569;
+}
+body.night-mode #appPageIndicator {
+    color: #94a3b8;
+}
+body.night-mode .app-excel-table th {
+    background-color: #334155;
+    border-color: #475569;
+    color: #e2e8f0;
+}
+body.night-mode .app-excel-table td {
+    border-color: #475569;
+    color: #e2e8f0;
+}
+body.night-mode .app-excel-table tr:hover td {
+    background-color: #1e293b;
+}
+body.night-mode .app-word-content {
+    color: #e2e8f0;
+}
+body.night-mode .app-docx-table td {
+    border-color: #475569;
+    color: #e2e8f0;
+}
+body.night-mode .app-preview-image {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+body.night-mode #appPdfCanvas {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+body.night-mode #appApprovalArea {
+    border-color: #334155;
+}
+body.night-mode .app-input-bar input {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    border-color: #334155;
+}
+body.night-mode .app-input-bar button {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+body.night-mode .app-input-bar button:hover {
+    background-color: #cbd5e1;
+}
+body.night-mode .app-file-approved {
+    background-color: rgba(34, 197, 94, 0.25);
+}
+body.night-mode .app-file-approved:hover {
+    border-color: #4ade80;
+}
+body.night-mode .app-file-flagged {
+    background-color: rgba(250, 204, 21, 0.3);
+}
+body.night-mode .app-file-flagged:hover {
+    border-color: #eab308;
+}
+body.night-mode .app-file-rejected {
+    background-color: rgba(248, 113, 113, 0.3);
+}
+body.night-mode .app-file-rejected:hover {
+    border-color: #f87171;
+}
+body.night-mode .app-file-rejected .app-file-name {
+    color: #fca5a5;
+}
+body.night-mode .app-file-ghost:hover {
+    background-color: transparent;
+}
+body.night-mode .app-action-approve {
+    background-color: #16a34a;
+    color: white;
+}
+body.night-mode .app-action-approve:hover {
+    background-color: #22c55e;
+}
+body.night-mode .app-action-dismiss {
+    background-color: #334155;
+    color: #e2e8f0;
+}
+body.night-mode .app-action-dismiss:hover {
+    background-color: #475569;
+}
+body.night-mode .app-action-flag {
+    background-color: #b45309;
+    color: #fef3c7;
+}
+body.night-mode .app-action-flag:hover {
+    background-color: #d97706;
+}
+body.night-mode #appActionBar {
+    border-color: #334155;
+}
+body.night-mode .app-icon-card:hover {
+    background-color: #334155;
+}
+body.night-mode .app-icon-card.app-icon-selected {
+    background-color: #1e3a5f;
+    border-color: #3b82f6;
+}
+body.night-mode .app-icon-label {
+    color: #e2e8f0;
 }

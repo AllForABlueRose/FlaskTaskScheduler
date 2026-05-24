@@ -46,3 +46,8 @@ def schedule_view():
 @main_bp.route('/events')
 def events_view():
     return _render_app('events')
+
+
+@main_bp.route('/applications')
+def applications_view():
+    return _render_app('applications')

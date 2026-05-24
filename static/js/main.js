@@ -11,6 +11,7 @@ window.onload = async () => {
     applyView('week');
     applyMode((hour >= 8 && hour < 20) ? 'day' : 'night');
     initEvents();
+    initApplications();
     initTabs();
     initTerminalHover();
     await loadTasks();
