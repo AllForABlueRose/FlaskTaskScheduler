@@ -1,0 +1,67 @@
+<div id="eventModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl p-5 w-[460px] max-w-full max-h-[85vh] overflow-y-auto shadow-2xl">
+        <div class="space-y-3">
+
+            <h2 id="eventModalTitle" class="text-lg font-semibold">New Event</h2>
+
+            <input id="eventTitle" class="border p-2 rounded w-full" placeholder="Title">
+
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-xs text-slate-600 block mb-1">Starts</label>
+                    <input id="eventStart" type="date" class="border p-2 rounded w-full">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-600 block mb-1">Ends</label>
+                    <input id="eventEnd" type="date" class="border p-2 rounded w-full">
+                </div>
+            </div>
+
+            <div class="relative">
+                <label class="text-xs text-slate-600 block mb-1">Category</label>
+                <input id="eventCategory"
+                       class="border p-2 rounded w-full"
+                       placeholder="Category (start typing for suggestions)"
+                       autocomplete="off"
+                       oninput="onEventCategoryInput()"
+                       onfocus="onEventCategoryInput()"
+                       onblur="setTimeout(hideCategorySuggest, 150)">
+                <div id="eventCategorySuggest"
+                     class="hidden absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-10 max-h-40 overflow-auto"></div>
+            </div>
+
+            <div>
+                <label class="text-xs text-slate-600 block mb-1">Color</label>
+                <div id="eventColorPalette" class="flex gap-2 flex-wrap">
+                    {% for c in ['#3b82f6','#10b981','#f59e0b','#ef4444','#a855f7','#0ea5e9','#64748b','#ec4899'] %}
+                    <button type="button"
+                            class="event-color-swatch w-7 h-7 rounded-full border-2"
+                            data-color="{{ c }}"
+                            style="background-color: {{ c }};"
+                            onclick="selectEventColor('{{ c }}')"
+                            aria-label="Color {{ c }}"></button>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <textarea id="eventDescription"
+                      rows="3"
+                      class="border p-2 rounded w-full"
+                      placeholder="Description"></textarea>
+
+            <button id="eventSaveBtn"
+                    onclick="saveEvent()"
+                    class="bg-green-600 text-white p-2 rounded w-full">
+                Save
+            </button>
+
+            <button id="eventDeleteBtn"
+                    onclick="deleteEventFromModal()"
+                    class="hidden bg-red-600 text-white p-2 rounded w-full">
+                Delete
+            </button>
+
+            <button onclick="closeEventModal()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Close</button>
+        </div>
+    </div>
+</div>

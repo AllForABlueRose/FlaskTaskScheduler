@@ -24,7 +24,7 @@ def _should_log(req, resp):
         return False
     if path.startswith('/logs'):
         return False
-    if method == 'GET' and path in ('/tasks', '/schedule', '/admin/users'):
+    if method == 'GET' and path in ('/tasks', '/api/schedule', '/api/events', '/api/event-categories', '/admin/users'):
         return False
     return True
 

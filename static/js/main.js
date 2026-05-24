@@ -10,6 +10,9 @@ window.onload = async () => {
     const hour = new Date().getHours();
     applyView('week');
     applyMode((hour >= 8 && hour < 20) ? 'day' : 'night');
+    initEvents();
+    initTabs();
+    initTerminalHover();
     await loadTasks();
     await loadSchedule();
     setInterval(updateNowLine, 30000);

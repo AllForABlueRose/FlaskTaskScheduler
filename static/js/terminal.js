@@ -1,21 +1,82 @@
 let terminalPollTimer = null;
+let terminalHideTimer = null;
 let terminalCursor = 0;
+let terminalChordOn = false;
+const TERMINAL_HIDE_DELAY_MS = 30000;
 
 function isTerminalVisible(){
     const panel = document.getElementById('terminalPanel');
-    return panel && !panel.classList.contains('hidden');
+    return !!panel && panel.classList.contains('terminal-panel-open');
 }
 
-function toggleTerminal(){
-    const panel = document.getElementById('terminalPanel');
-    if (!panel) return;
-    if (isTerminalVisible()) {
-        panel.classList.add('hidden');
-        stopTerminalPoll();
-    } else {
-        panel.classList.remove('hidden');
-        startTerminalPoll();
+function toggleTerminalChord(){
+    setTerminalChord(!terminalChordOn);
+}
+
+function setTerminalChord(on){
+    terminalChordOn = on;
+    document.body.classList.toggle('terminal-chord-on', on);
+    if (!on) {
+        clearTerminalHideTimer();
+        hideTerminalPanel({ immediate: true });
     }
+}
+
+function showTerminalPanel(){
+    if (!terminalChordOn) return;
+    const panel = document.getElementById('terminalPanel');
+    const tab = document.getElementById('terminalTab');
+    if (!panel) return;
+    clearTerminalHideTimer();
+    panel.classList.add('terminal-panel-open');
+    if (tab) tab.classList.add('terminal-tab-hidden-by-panel');
+    startTerminalPoll();
+}
+
+function hideTerminalPanel(opts){
+    opts = opts || {};
+    const panel = document.getElementById('terminalPanel');
+    const tab = document.getElementById('terminalTab');
+    if (!panel) return;
+    panel.classList.remove('terminal-panel-open');
+    if (tab) tab.classList.remove('terminal-tab-hidden-by-panel');
+    stopTerminalPoll();
+}
+
+function startTerminalHideTimer(){
+    if (!terminalChordOn) return;
+    clearTerminalHideTimer();
+    terminalHideTimer = setTimeout(() => {
+        terminalHideTimer = null;
+        hideTerminalPanel();
+    }, TERMINAL_HIDE_DELAY_MS);
+}
+
+function clearTerminalHideTimer(){
+    if (terminalHideTimer) {
+        clearTimeout(terminalHideTimer);
+        terminalHideTimer = null;
+    }
+}
+
+function initTerminalHover(){
+    const tab = document.getElementById('terminalTab');
+    const panel = document.getElementById('terminalPanel');
+    if (!tab || !panel) return;
+
+    const enter = () => {
+        if (!terminalChordOn) return;
+        showTerminalPanel();
+    };
+    const leave = () => {
+        if (!terminalChordOn) return;
+        startTerminalHideTimer();
+    };
+
+    tab.addEventListener('mouseenter', enter);
+    tab.addEventListener('mouseleave', leave);
+    panel.addEventListener('mouseenter', enter);
+    panel.addEventListener('mouseleave', leave);
 }
 
 async function pollTerminalLogs(){
@@ -76,7 +137,7 @@ function appendTerminalEntries(entries){
             e.preventDefault();
             if (downCodes.size === REQUIRED_CODES.size && !firedThisChord) {
                 firedThisChord = true;
-                toggleTerminal();
+                toggleTerminalChord();
             }
         }
     });

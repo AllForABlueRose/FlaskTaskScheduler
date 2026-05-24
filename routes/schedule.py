@@ -6,7 +6,7 @@ from routes.auth import login_required
 schedule_bp = Blueprint('schedule', __name__)
 
 
-@schedule_bp.route('/schedule')
+@schedule_bp.route('/api/schedule')
 @login_required
 def get_schedule():
     with db_connect() as conn:
@@ -16,7 +16,7 @@ def get_schedule():
     return jsonify([dict(r) for r in rows])
 
 
-@schedule_bp.route('/schedule', methods=['POST'])
+@schedule_bp.route('/api/schedule', methods=['POST'])
 @login_required
 def schedule_task():
     data = request.json
@@ -54,7 +54,7 @@ def schedule_task():
     })
 
 
-@schedule_bp.route('/schedule/remove', methods=['POST'])
+@schedule_bp.route('/api/schedule/remove', methods=['POST'])
 @login_required
 def remove_scheduled():
     data = request.json
@@ -63,7 +63,7 @@ def remove_scheduled():
     return jsonify({'ok': True})
 
 
-@schedule_bp.route('/schedule/<int:entry_id>/input', methods=['POST'])
+@schedule_bp.route('/api/schedule/<int:entry_id>/input', methods=['POST'])
 @login_required
 def set_entry_input(entry_id):
     data = request.json or {}

@@ -3,7 +3,7 @@ let currentChipEntryId = null;
 let currentChipTaskId = null;
 
 async function loadSchedule(){
-    const res = await fetch('/schedule');
+    const res = await fetch('/api/schedule');
     if (res.status === 401) { location.href = '/'; return; }
     scheduleEntries = await res.json();
     renderSchedule();
@@ -195,7 +195,7 @@ async function saveChipInput(){
     if (currentChipEntryId === null) return;
     const useDefault = document.getElementById('chipUseDefault').checked;
     const input = useDefault ? null : document.getElementById('chipInput').value;
-    const res = await fetch(`/schedule/${currentChipEntryId}/input`, {
+    const res = await fetch(`/api/schedule/${currentChipEntryId}/input`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ input }),
@@ -253,7 +253,7 @@ async function dropTask(ev){
         taskId = ev.dataTransfer.getData("text/plain");
     }
 
-    const res = await fetch('/schedule', {
+    const res = await fetch('/api/schedule', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ id: entryId, taskId, slot, duration })
@@ -298,7 +298,7 @@ function endScheduledDrag(ev){
 
 async function removeScheduled(entryId){
     const id = parseInt(entryId, 10);
-    await fetch('/schedule/remove', {
+    await fetch('/api/schedule/remove', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ id })
@@ -343,7 +343,7 @@ async function onResizeEnd(ev){
     const slot = chipEl.dataset.slot;
     resizeState = null;
 
-    const res = await fetch('/schedule', {
+    const res = await fetch('/api/schedule', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ id: entryId, taskId, slot, duration: newDuration })

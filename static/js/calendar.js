@@ -54,6 +54,9 @@ function renderCalendarFrame(){
     updateViewTitle();
     applyVisibility();
     renderSchedule();
+    if (typeof renderScheduleEventChips === 'function') {
+        renderScheduleEventChips();
+    }
     updateNowLine();
     updateOutOfRange();
 }

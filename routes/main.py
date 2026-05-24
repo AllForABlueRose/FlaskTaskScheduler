@@ -1,6 +1,6 @@
 from datetime import date
 
-from flask import Blueprint, render_template, session
+from flask import Blueprint, redirect, render_template, session, url_for
 
 from db import db_connect
 from recurrence import ensure_range_materialized, needs_daily_check, valid_range
@@ -9,8 +9,7 @@ from routes.auth import current_user
 main_bp = Blueprint('main', __name__)
 
 
-@main_bp.route('/')
-def home():
+def _render_app(initial_tab):
     user = current_user()
     if not user or user['status'] != 'active':
         session.clear()
@@ -30,4 +29,20 @@ def home():
         range_end_iso=range_end.isoformat(),
         role=user['role'],
         username=user['username'],
+        initial_tab=initial_tab,
     )
+
+
+@main_bp.route('/')
+def home():
+    return redirect(url_for('main.schedule_view'))
+
+
+@main_bp.route('/schedule')
+def schedule_view():
+    return _render_app('schedule')
+
+
+@main_bp.route('/events')
+def events_view():
+    return _render_app('events')

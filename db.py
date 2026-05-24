@@ -122,5 +122,20 @@ def init_db():
         )
     ''')
 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS events(
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            category TEXT,
+            color TEXT,
+            description TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_date)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_events_end ON events(end_date)')
+
     conn.commit()
     conn.close()
