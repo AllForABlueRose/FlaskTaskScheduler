@@ -34,6 +34,7 @@ def _file_mtime_iso(filepath):
         return None
 
 
+
 @applications_bp.route('/api/applications/files')
 @login_required
 def list_files():
@@ -163,22 +164,35 @@ def approved_tree():
     tree = []
     if not os.path.isdir(APPROVED_DIR):
         return jsonify({'tree': tree})
+
+    with db_connect() as conn:
+        rows = conn.execute(
+            "SELECT approved_path, created_at FROM app_file_status WHERE status='approved' AND approved_path IS NOT NULL"
+        ).fetchall()
+    approved_dates = {r['approved_path']: r['created_at'] for r in rows}
+
     for gp_name in sorted(os.listdir(APPROVED_DIR)):
         gp_path = os.path.join(APPROVED_DIR, gp_name)
         if not os.path.isdir(gp_path):
             continue
-        gp_node = {'name': gp_name, 'children': []}
+        gp_node = {'name': gp_name, 'children': [], 'last_updated': None}
         for p_name in sorted(os.listdir(gp_path)):
             p_path = os.path.join(gp_path, p_name)
             if not os.path.isdir(p_path):
                 continue
-            p_node = {'name': p_name, 'children': []}
+            p_node = {'name': p_name, 'children': [], 'last_updated': None}
             for fname in sorted(os.listdir(p_path)):
                 ftype = _file_type(fname)
                 if ftype and os.path.isfile(os.path.join(p_path, fname)):
-                    p_node['children'].append({'name': fname, 'type': ftype})
+                    ap = os.path.join(gp_name, p_name, fname)
+                    approved_at = approved_dates.get(ap)
+                    p_node['children'].append({'name': fname, 'type': ftype, 'approved_at': approved_at})
+                    if approved_at and (not p_node['last_updated'] or approved_at > p_node['last_updated']):
+                        p_node['last_updated'] = approved_at
             if p_node['children']:
                 gp_node['children'].append(p_node)
+                if p_node['last_updated'] and (not gp_node['last_updated'] or p_node['last_updated'] > gp_node['last_updated']):
+                    gp_node['last_updated'] = p_node['last_updated']
         if gp_node['children']:
             tree.append(gp_node)
     return jsonify({'tree': tree})

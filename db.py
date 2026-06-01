@@ -153,5 +153,54 @@ def init_db():
     if 'approved_path' not in afs_cols:
         c.execute("ALTER TABLE app_file_status ADD COLUMN approved_path TEXT")
 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS assignments(
+            id TEXT PRIMARY KEY,
+            project_code TEXT NOT NULL,
+            title TEXT NOT NULL,
+            color TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_schedule(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slot TEXT NOT NULL,
+            assignment_id TEXT,
+            duration INTEGER DEFAULT 1
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_timeline_slot ON timeline_schedule(slot)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_sessions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_date TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            stopped_at TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_timeline_session_date ON timeline_sessions(session_date)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_marks(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            marked_at TEXT NOT NULL,
+            sort_order INTEGER NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_segments(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            segment_index INTEGER NOT NULL,
+            assignment_id TEXT
+        )
+    ''')
+
     conn.commit()
     conn.close()

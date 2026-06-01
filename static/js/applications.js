@@ -439,6 +439,16 @@ function renderApprovedGrid(){
         label.className = 'app-icon-label';
         label.textContent = item.name;
 
+        const dateStr = isFolder ? item.last_updated : item.approved_at;
+        if (dateStr) {
+            const dateTag = document.createElement('div');
+            dateTag.className = 'app-icon-date';
+            const d = new Date(dateStr);
+            dateTag.textContent = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+            icon.style.position = 'relative';
+            icon.appendChild(dateTag);
+        }
+
         card.appendChild(icon);
         card.appendChild(label);
 
@@ -468,6 +478,22 @@ function selectApprovedFile(file){
     renderApprovedGrid();
     loadAppPreview();
     updateAppActionBar();
+}
+
+function clearApplicationView(){
+    const input = document.getElementById('appFolderInput');
+    if (input) input.value = '';
+    const status = document.getElementById('appFolderStatus');
+    if (status) status.classList.add('hidden');
+    appCurrentFolder = '';
+    appFiles = [];
+    appSelectedFile = null;
+    appCurrentPage = 0;
+    appTotalPages = 0;
+    appPdfDoc = null;
+    const list = document.getElementById('appFileList');
+    if (list) list.innerHTML = '<div class="text-sm text-slate-500 italic">Enter a folder path and click Fetch</div>';
+    clearAppPreview();
 }
 
 async function refetchAppFiles(){
