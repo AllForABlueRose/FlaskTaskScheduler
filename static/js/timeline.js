@@ -1,6 +1,7 @@
 let timelineAnchor = null;
 let timelineAssignments = [];
 let timelineScheduleEntries = [];
+let timelineFinalized = {};
 let timelineInitialized = false;
 let currentAssignmentId = null;
 
@@ -18,7 +19,66 @@ function initTimeline() {
     timelineAnchor = mondayOf(parseISO(TODAY_ISO));
     loadTimelineAssignments();
     loadTimelineSchedule();
+    loadTimelineFinalized();
     initStrip();
+    initTimelineClock();
+}
+
+const CLOCK_SEGMENTS = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+const CLOCK_DIGIT_SEGMENTS = {
+    '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg',
+    '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg'
+};
+let timelineClockDigits = [];
+
+function initTimelineClock() {
+    const bezel = document.getElementById('timelineClockBezel');
+    if (!bezel) return;
+    timelineClockDigits = [];
+    for (let i = 0; i < 6; i++) {
+        if (i === 2 || i === 4) {
+            const colon = document.createElement('div');
+            colon.className = 'timeline-clock-colon';
+            colon.appendChild(document.createElement('span'));
+            colon.appendChild(document.createElement('span'));
+            bezel.appendChild(colon);
+        }
+        const digit = document.createElement('div');
+        digit.className = 'timeline-clock-digit';
+        const segs = {};
+        for (const s of CLOCK_SEGMENTS) {
+            const seg = document.createElement('div');
+            seg.className = 'timeline-clock-seg timeline-clock-seg-' + s;
+            digit.appendChild(seg);
+            segs[s] = seg;
+        }
+        bezel.appendChild(digit);
+        timelineClockDigits.push(segs);
+    }
+    updateTimelineClock();
+    const scheduleNext = () => {
+        const delay = 1000 - new Date().getMilliseconds();
+        setTimeout(() => {
+            updateTimelineClock();
+            scheduleNext();
+        }, delay);
+    };
+    scheduleNext();
+}
+
+function updateTimelineClock() {
+    if (!timelineClockDigits.length) return;
+    const now = new Date();
+    const text = String(now.getHours()).padStart(2, '0')
+        + String(now.getMinutes()).padStart(2, '0')
+        + String(now.getSeconds()).padStart(2, '0');
+    for (let i = 0; i < 6; i++) {
+        const lit = CLOCK_DIGIT_SEGMENTS[text[i]];
+        const segs = timelineClockDigits[i];
+        for (const s of CLOCK_SEGMENTS) {
+            segs[s].classList.toggle('lit', lit.includes(s));
+        }
+    }
 }
 
 function initStrip() {
@@ -85,6 +145,12 @@ function renderTimelineGrid() {
             body.appendChild(chip);
         }
 
+        const finalized = timelineFinalized[iso];
+        if (finalized) {
+            const strip = renderDayStrip(finalized);
+            if (strip) body.appendChild(strip);
+        }
+
         box.appendChild(header);
         box.appendChild(body);
         grid.appendChild(box);
@@ -144,6 +210,99 @@ async function loadTimelineSchedule() {
         timelineScheduleEntries = await res.json();
         renderTimelineGrid();
     } catch {}
+}
+
+async function loadTimelineFinalized() {
+    try {
+        const res = await fetch('/api/timeline/strip/finalized');
+        if (!res.ok) return;
+        const sessions = await res.json();
+        // Latest finalized session wins per date (endpoint is ordered by id asc).
+        timelineFinalized = {};
+        for (const entry of sessions) {
+            timelineFinalized[entry.session.session_date] = entry;
+        }
+        renderTimelineGrid();
+    } catch {}
+}
+
+// Compact replica of the live strip, drawn inside a week-grid day box: a colored
+// vertical line with point times on the left and segment labels on the right,
+// all positioned proportionally across the session's started_at..stopped_at span.
+function renderDayStrip(entry) {
+    const session = entry.session;
+    if (!session || !session.stopped_at) return null;
+    const startMs = new Date(session.started_at).getTime();
+    const endMs = new Date(session.stopped_at).getTime();
+    const total = endMs - startMs;
+    if (!(total > 0)) return null;
+
+    const points = [startMs];
+    for (const m of entry.marks) points.push(new Date(m.marked_at).getTime());
+    points.push(endMs);
+
+    const offset = (ms) => ((ms - startMs) / total) * 100;
+    const fmt = (ms) => {
+        const d = new Date(ms);
+        return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    };
+
+    const wrap = document.createElement('div');
+    wrap.className = 'day-strip';
+
+    const times = document.createElement('div');
+    times.className = 'day-strip-times';
+
+    const lineCol = document.createElement('div');
+    lineCol.className = 'day-strip-line';
+
+    const labels = document.createElement('div');
+    labels.className = 'day-strip-labels';
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const segRecord = entry.segments.find(s => s.segment_index === i);
+        const assignment = segRecord && segRecord.assignment_id
+            ? timelineAssignments.find(a => a.id === segRecord.assignment_id)
+            : null;
+        const color = assignment ? (assignment.color || '#64748b') : '#cbd5e1';
+
+        const seg = document.createElement('div');
+        seg.className = 'day-strip-segment';
+        seg.style.height = ((points[i + 1] - points[i]) / total) * 100 + '%';
+        seg.style.backgroundColor = color;
+        lineCol.appendChild(seg);
+
+        if (assignment) {
+            const label = document.createElement('div');
+            label.className = 'day-strip-label';
+            label.style.top = offset((points[i] + points[i + 1]) / 2) + '%';
+            label.style.color = color;
+            label.textContent = assignment.project_code + ': ' + assignment.title;
+            label.title = assignment.project_code + ': ' + assignment.title;
+            labels.appendChild(label);
+        }
+    }
+
+    for (let i = 0; i < points.length; i++) {
+        const time = document.createElement('div');
+        time.className = 'day-strip-time';
+        time.style.top = offset(points[i]) + '%';
+        time.textContent = fmt(points[i]);
+        times.appendChild(time);
+
+        const dot = document.createElement('div');
+        dot.className = 'day-strip-point';
+        dot.style.top = offset(points[i]) + '%';
+        if (i === 0) dot.style.backgroundColor = '#22c55e';
+        else if (i === points.length - 1) dot.style.backgroundColor = '#ef4444';
+        else dot.style.backgroundColor = '#f59e0b';
+        lineCol.appendChild(dot);
+    }
+
+    wrap.appendChild(times);
+    wrap.appendChild(lineCol);
+    wrap.appendChild(labels);
+    return wrap;
 }
 
 function renderAssignmentList() {
@@ -264,6 +423,8 @@ async function loadStripSession() {
         if (stripSession && !stripSession.stopped_at) {
             stripState = 'running';
             startStripInterval();
+        } else if (stripSession && stripSession.stopped_at && !stripSession.finalized) {
+            stripState = 'review';
         } else {
             stripState = 'idle';
         }
@@ -290,6 +451,13 @@ function updateStripButtons() {
         lineContainer.classList.remove('hidden');
     } else if (stripState === 'marking') {
         topBtn.classList.add('strip-btn-purple');
+        botBtn.classList.remove('hidden');
+        lineContainer.classList.remove('hidden');
+    } else if (stripState === 'review') {
+        // Stopped/frozen, awaiting segment assignment before recording. No marks
+        // can be added to a stopped session, so hide the top button; the red
+        // button now records onto the grid.
+        topBtn.classList.add('hidden');
         botBtn.classList.remove('hidden');
         lineContainer.classList.remove('hidden');
     }
@@ -353,11 +521,25 @@ async function onStripStopClick() {
     });
     if (!res.ok) return;
     const data = await res.json();
+    // The session is now frozen (stopped_at set): the end point stops progressing.
     stripSession = data.session;
-    stripState = 'idle';
     stopStripInterval();
+    const unassigned = data.unassigned || [];
+    if (unassigned.length) {
+        // Stopped but not yet recorded — keep the frozen strip on screen so the
+        // user can assign the remaining segments and press red again to record.
+        stripState = 'review';
+        updateStripButtons();
+        renderStripLine();
+        alert('Timeline stopped. Assign every segment, then press the red button '
+            + 'again to record it onto the day. ' + unassigned.length
+            + ' segment(s) still need an assignment.');
+        return;
+    }
+    stripState = 'idle';
     updateStripButtons();
     renderStripLine();
+    loadTimelineFinalized();
 }
 
 function startStripInterval() {
@@ -420,6 +602,7 @@ function renderStripLine() {
         if (i === 0) {
             const startDot = document.createElement('div');
             startDot.className = 'strip-point strip-point-start';
+            startDot.appendChild(makeStripPointLabel(startTime));
             startDot.addEventListener('mouseenter', (ev) => showStripPointHover(ev, startTime));
             startDot.addEventListener('mousemove', moveHover);
             startDot.addEventListener('mouseleave', hideHover);
@@ -452,6 +635,7 @@ function renderStripLine() {
             dotEl.className = 'strip-point strip-point-mark';
             const markRecord = stripMarks[i];
             const markTime = points[i + 1];
+            dotEl.appendChild(makeStripPointLabel(markTime));
             dotEl.addEventListener('mouseenter', (ev) => showStripPointHover(ev, new Date(markRecord.marked_at).getTime()));
             dotEl.addEventListener('mousemove', moveHover);
             dotEl.addEventListener('mouseleave', hideHover);
@@ -473,8 +657,18 @@ function renderStripLine() {
         const d = new Date();
         label.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
         endDot.appendChild(label);
+    } else {
+        endDot.appendChild(makeStripPointLabel(now));
     }
     line.appendChild(endDot);
+}
+
+function makeStripPointLabel(timestamp) {
+    const label = document.createElement('div');
+    label.className = 'strip-point-label';
+    const d = new Date(timestamp);
+    label.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    return label;
 }
 
 function startMarkDrag(e, mark) {

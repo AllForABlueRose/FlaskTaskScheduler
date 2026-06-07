@@ -1,10 +1,12 @@
+import hashlib
+import io
 import os
-import shutil
 from datetime import datetime
 from html import escape as html_escape
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, session
 
+import ledger
 from db import db_connect
 from routes.auth import login_required
 
@@ -19,7 +21,6 @@ SUPPORTED_EXT = {
 }
 
 MAX_EXCEL_ROWS = 500
-APPROVED_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'approved')
 
 
 def _file_type(name):
@@ -30,6 +31,17 @@ def _file_type(name):
 def _file_mtime_iso(filepath):
     try:
         return datetime.fromtimestamp(os.path.getmtime(filepath)).isoformat()
+    except OSError:
+        return None
+
+
+def _file_sha256(filepath):
+    try:
+        h = hashlib.sha256()
+        with open(filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(1 << 20), b''):
+                h.update(chunk)
+        return h.hexdigest()
     except OSError:
         return None
 
@@ -63,7 +75,7 @@ def list_files():
     dismissed = set()
     flagged = {}
     rejected = []
-    approved = set()
+    approved = {}
     for r in rows:
         if r['status'] == 'dismissed':
             dismissed.add(r['filename'])
@@ -72,7 +84,8 @@ def list_files():
         elif r['status'] == 'rejected':
             rejected.append({'id': r['id'], 'filename': r['filename'], 'mtime': r['file_mtime']})
         elif r['status'] == 'approved':
-            approved.add(r['filename'])
+            # rows are ordered created_at ASC, so the latest approval's mtime wins
+            approved[r['filename']] = r['file_mtime']
 
     stale_flag_ids = []
     for name, info in list(flagged.items()):
@@ -85,6 +98,9 @@ def list_files():
         with db_connect() as conn:
             for sid in stale_flag_ids:
                 conn.execute('DELETE FROM app_file_status WHERE id=?', (sid,))
+
+    with ledger.ledger_connect() as lconn:
+        approved_hashes = ledger.latest_hashes_for_folder(lconn, folder)
 
     files = []
     handled_by_reject = set()
@@ -109,7 +125,20 @@ def list_files():
             continue
         entry = {'name': name, 'type': ftype}
         if name in approved:
-            entry['status'] = 'approved'
+            if name in approved_hashes:
+                # content hash from the ledger is the source of truth — immune
+                # to mtime spoofing, identical for every supported file type
+                unchanged = _file_sha256(os.path.join(folder, name)) == approved_hashes[name]
+            else:
+                # legacy approval predating the ledger (unmigrated): mtime fallback
+                unchanged = _file_mtime_iso(os.path.join(folder, name)) == approved[name]
+            if unchanged:
+                entry['status'] = 'approved'
+            elif name in flagged:
+                entry['status'] = 'flagged'
+            else:
+                # approved earlier but changed since — needs a fresh approval
+                entry['status'] = 'modified'
         elif name in flagged:
             entry['status'] = 'flagged'
         files.append(entry)
@@ -139,10 +168,18 @@ def set_file_status():
         parent = os.path.basename(folder)
         if not grandparent:
             grandparent = '_root'
-        dest_dir = os.path.join(APPROVED_DIR, grandparent, parent)
-        os.makedirs(dest_dir, exist_ok=True)
-        shutil.copy2(filepath, os.path.join(dest_dir, filename))
-        approved_path = os.path.join(grandparent, parent, filename)
+        # '/' regardless of platform: approved_path is a ledger key, not a filesystem path
+        approved_path = '/'.join([grandparent, parent, filename])
+        try:
+            with open(filepath, 'rb') as f:
+                content = f.read()
+        except OSError:
+            return jsonify({'error': 'cannot read file'}), 400
+        with ledger.ledger_connect() as lconn:
+            ledger.append_entry(
+                lconn, folder, filename, approved_path, content,
+                file_mtime=mtime, approved_by=session.get('username'),
+            )
 
     with db_connect() as conn:
         if status in ('dismissed', 'flagged'):
@@ -161,41 +198,45 @@ def set_file_status():
 @applications_bp.route('/api/applications/approved-tree')
 @login_required
 def approved_tree():
-    tree = []
-    if not os.path.isdir(APPROVED_DIR):
-        return jsonify({'tree': tree})
+    with ledger.ledger_connect() as lconn:
+        latest = ledger.latest_entries_by_path(lconn)
 
-    with db_connect() as conn:
-        rows = conn.execute(
-            "SELECT approved_path, created_at FROM app_file_status WHERE status='approved' AND approved_path IS NOT NULL"
-        ).fetchall()
-    approved_dates = {r['approved_path']: r['created_at'] for r in rows}
-
-    for gp_name in sorted(os.listdir(APPROVED_DIR)):
-        gp_path = os.path.join(APPROVED_DIR, gp_name)
-        if not os.path.isdir(gp_path):
+    grouped = {}
+    for path, row in latest.items():
+        parts = path.split('/')
+        if len(parts) != 3:
             continue
+        gp_name, p_name, fname = parts
+        ftype = _file_type(fname)
+        if not ftype:
+            continue
+        grouped.setdefault(gp_name, {}).setdefault(p_name, []).append(
+            {'name': fname, 'type': ftype, 'approved_at': row['created_at']}
+        )
+
+    tree = []
+    for gp_name in sorted(grouped):
         gp_node = {'name': gp_name, 'children': [], 'last_updated': None}
-        for p_name in sorted(os.listdir(gp_path)):
-            p_path = os.path.join(gp_path, p_name)
-            if not os.path.isdir(p_path):
-                continue
-            p_node = {'name': p_name, 'children': [], 'last_updated': None}
-            for fname in sorted(os.listdir(p_path)):
-                ftype = _file_type(fname)
-                if ftype and os.path.isfile(os.path.join(p_path, fname)):
-                    ap = os.path.join(gp_name, p_name, fname)
-                    approved_at = approved_dates.get(ap)
-                    p_node['children'].append({'name': fname, 'type': ftype, 'approved_at': approved_at})
-                    if approved_at and (not p_node['last_updated'] or approved_at > p_node['last_updated']):
-                        p_node['last_updated'] = approved_at
-            if p_node['children']:
-                gp_node['children'].append(p_node)
-                if p_node['last_updated'] and (not gp_node['last_updated'] or p_node['last_updated'] > gp_node['last_updated']):
-                    gp_node['last_updated'] = p_node['last_updated']
-        if gp_node['children']:
-            tree.append(gp_node)
+        for p_name in sorted(grouped[gp_name]):
+            children = sorted(grouped[gp_name][p_name], key=lambda f: f['name'])
+            p_node = {'name': p_name, 'children': children, 'last_updated': None}
+            for child in children:
+                a = child['approved_at']
+                if a and (not p_node['last_updated'] or a > p_node['last_updated']):
+                    p_node['last_updated'] = a
+            gp_node['children'].append(p_node)
+            if p_node['last_updated'] and (not gp_node['last_updated'] or p_node['last_updated'] > gp_node['last_updated']):
+                gp_node['last_updated'] = p_node['last_updated']
+        tree.append(gp_node)
     return jsonify({'tree': tree})
+
+
+@applications_bp.route('/api/applications/ledger/verify')
+@login_required
+def ledger_verify():
+    with ledger.ledger_connect() as lconn:
+        result = ledger.verify_chain(lconn)
+    return jsonify(result)
 
 
 def _safe_path(folder, name):
@@ -214,52 +255,62 @@ def file_preview():
     if not folder or not name:
         return jsonify({'error': 'folder and name required'}), 400
 
-    if request.args.get('approved') == '1':
-        base = os.path.join(APPROVED_DIR, folder)
-        filepath = _safe_path(base, name)
-        if filepath is None or not filepath.startswith(os.path.realpath(APPROVED_DIR)):
-            return jsonify({'error': 'forbidden'}), 403
-    else:
-        filepath = _safe_path(folder, name)
-        if filepath is None:
-            return jsonify({'error': 'forbidden'}), 403
-    if not os.path.isfile(filepath):
-        return jsonify({'error': 'file not found'}), 404
-
     ftype = _file_type(name)
     if not ftype:
         return jsonify({'error': 'unsupported file type'}), 400
 
+    if request.args.get('approved') == '1':
+        # approved previews are served from the verified blob store, never disk
+        approved_path = folder + '/' + name
+        with ledger.ledger_connect() as lconn:
+            entry = ledger.latest_entry_for_path(lconn, approved_path)
+            content = ledger.fetch_blob(lconn, entry['content_sha256']) if entry else None
+        if entry is None or content is None:
+            return jsonify({'error': 'no approved record for this file'}), 404
+        if hashlib.sha256(content).hexdigest() != entry['content_sha256']:
+            return jsonify({'error': 'integrity check failed - stored content does not match the ledger'}), 409
+        return _dispatch_preview(ftype, io.BytesIO(content), name)
+
+    filepath = _safe_path(folder, name)
+    if filepath is None:
+        return jsonify({'error': 'forbidden'}), 403
+    if not os.path.isfile(filepath):
+        return jsonify({'error': 'file not found'}), 404
+    return _dispatch_preview(ftype, filepath, name)
+
+
+def _dispatch_preview(ftype, source, name):
+    """source is a filesystem path (live files) or BytesIO (approved blobs)."""
     if ftype == 'image':
-        return _preview_image(filepath)
+        return _preview_image(source, name)
     if ftype == 'pdf':
-        return _preview_pdf(filepath)
+        return _preview_pdf(source)
     if ftype == 'excel':
         page = request.args.get('page', '0')
         try:
             page = max(0, int(page))
         except ValueError:
             page = 0
-        return _preview_excel(filepath, page)
+        return _preview_excel(source, page)
     if ftype == 'word':
-        return _preview_word(filepath)
+        return _preview_word(source)
     return jsonify({'error': 'unsupported'}), 400
 
 
-def _preview_image(filepath):
+def _preview_image(source, name):
     import mimetypes
-    mime = mimetypes.guess_type(filepath)[0] or 'application/octet-stream'
-    return send_file(filepath, mimetype=mime)
+    mime = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+    return send_file(source, mimetype=mime)
 
 
-def _preview_pdf(filepath):
-    return send_file(filepath, mimetype='application/pdf')
+def _preview_pdf(source):
+    return send_file(source, mimetype='application/pdf')
 
 
-def _preview_excel(filepath, page):
+def _preview_excel(source, page):
     import openpyxl
     try:
-        wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
+        wb = openpyxl.load_workbook(source, read_only=True, data_only=True)
     except Exception:
         return jsonify({'error': 'cannot read Excel file'}), 400
     try:
@@ -301,11 +352,11 @@ def _preview_excel(filepath, page):
         wb.close()
 
 
-def _preview_word(filepath):
+def _preview_word(source):
     import docx
     from docx.oxml.ns import qn
     try:
-        doc = docx.Document(filepath)
+        doc = docx.Document(source)
     except Exception:
         return jsonify({'error': 'cannot read Word file'}), 400
 

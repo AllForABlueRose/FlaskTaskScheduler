@@ -104,6 +104,10 @@ function renderAppFileList(){
         if (file.status === 'approved') row.classList.add('app-file-approved');
         if (file.status === 'flagged') row.classList.add('app-file-flagged');
         if (file.status === 'rejected') row.classList.add('app-file-rejected');
+        if (file.status === 'modified') {
+            row.classList.add('app-file-modified');
+            row.title = 'Changed since approval - needs re-approval';
+        }
         if (file.ghost) row.classList.add('app-file-ghost');
 
         const badge = document.createElement('span');

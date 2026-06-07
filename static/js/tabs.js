@@ -65,6 +65,7 @@ function switchTab(name, opts){
 function initTabs(){
     const initialTab = document.body.dataset.initialTab || 'schedule';
     setActiveTabButton(initialTab);
+    onTabEntered(initialTab);
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {

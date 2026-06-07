@@ -184,6 +184,10 @@ def init_db():
     ''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_timeline_session_date ON timeline_sessions(session_date)')
 
+    ts_cols = [r[1] for r in c.execute("PRAGMA table_info(timeline_sessions)").fetchall()]
+    if 'finalized' not in ts_cols:
+        c.execute("ALTER TABLE timeline_sessions ADD COLUMN finalized INTEGER DEFAULT 0")
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS timeline_marks(
             id INTEGER PRIMARY KEY AUTOINCREMENT,

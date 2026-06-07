@@ -210,12 +210,54 @@ def strip_stop():
         return jsonify({'error': 'session_id required'}), 400
     now_iso = datetime.now().isoformat()
     with db_connect() as conn:
-        conn.execute(
-            'UPDATE timeline_sessions SET stopped_at=? WHERE id=? AND stopped_at IS NULL',
-            (now_iso, session_id)
-        )
+        session = conn.execute(
+            'SELECT * FROM timeline_sessions WHERE id=?', (session_id,)
+        ).fetchone()
+        if not session:
+            return jsonify({'error': 'session not found'}), 404
+        # First red press freezes the strip: stamp stopped_at so the end point
+        # stops progressing with wall-clock time. Recording onto the week grid is
+        # a separate gate (finalized=1) that requires every segment assigned.
+        if session['stopped_at'] is None:
+            conn.execute(
+                'UPDATE timeline_sessions SET stopped_at=? WHERE id=?', (now_iso, session_id)
+            )
+        segments = conn.execute(
+            'SELECT segment_index, assignment_id FROM timeline_segments WHERE session_id=? '
+            'ORDER BY segment_index', (session_id,)
+        ).fetchall()
+        unassigned = [s['segment_index'] for s in segments if not s['assignment_id']]
+        if not unassigned and not session['finalized']:
+            conn.execute(
+                'UPDATE timeline_sessions SET finalized=1 WHERE id=?', (session_id,)
+            )
         session = conn.execute('SELECT * FROM timeline_sessions WHERE id=?', (session_id,)).fetchone()
-    return jsonify({'session': dict(session) if session else None})
+    return jsonify({'session': dict(session), 'unassigned': unassigned})
+
+
+@timeline_bp.route('/api/timeline/strip/finalized')
+@login_required
+def strip_finalized():
+    with db_connect() as conn:
+        sessions = conn.execute(
+            'SELECT * FROM timeline_sessions WHERE finalized=1 AND stopped_at IS NOT NULL '
+            'ORDER BY id'
+        ).fetchall()
+        result = []
+        for s in sessions:
+            sid = s['id']
+            marks = conn.execute(
+                'SELECT * FROM timeline_marks WHERE session_id=? ORDER BY sort_order', (sid,)
+            ).fetchall()
+            segments = conn.execute(
+                'SELECT * FROM timeline_segments WHERE session_id=? ORDER BY segment_index', (sid,)
+            ).fetchall()
+            result.append({
+                'session': dict(s),
+                'marks': [dict(m) for m in marks],
+                'segments': [dict(seg) for seg in segments],
+            })
+    return jsonify(result)
 
 
 @timeline_bp.route('/api/timeline/strip/mark/update', methods=['POST'])

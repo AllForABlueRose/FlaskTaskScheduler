@@ -7,6 +7,7 @@ from flask import Flask
 import request_log
 from db import init_db
 from keep_awake import prevent_sleep
+from ledger import init_ledger_db
 from routes.auth import auth_bp
 from routes.applications import applications_bp
 from routes.events import events_bp
@@ -37,6 +38,7 @@ def create_app():
 if __name__ == '__main__':
     request_log.init_logging()
     init_db()
+    init_ledger_db()
     prevent_sleep()
     threading.Thread(target=run_scheduler, daemon=True).start()
     app = create_app()
