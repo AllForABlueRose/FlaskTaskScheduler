@@ -1159,7 +1159,7 @@ body.night-mode .timeline-strip {
 
 .strip-line-container {
     flex: 1;
-    width: 6px;
+    width: 28px;
     min-height: 0;
     position: relative;
     margin: 0.5rem 0;
@@ -1171,51 +1171,53 @@ body.night-mode .timeline-strip {
 .strip-line-container.hidden { display: none; }
 
 .strip-line {
-    width: 100%;
-    border-radius: 3px;
-    background-color: #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
     overflow: visible;
     transition: height 1s linear;
-    position: relative;
-}
-body.night-mode .strip-line {
-    background-color: #334155;
 }
 
-.strip-segment {
+/* The strip body is an SVG of wavy per-segment strokes; the stroke is the line. */
+.strip-svg {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    min-height: 16px;
-    background-color: #cbd5e1;
+    height: 100%;
+    overflow: visible;
+}
+.strip-seg-path {
+    fill: none;
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    transition: stroke 200ms ease;
+}
+.strip-seg-hit {
+    fill: transparent;
     cursor: pointer;
-    transition: background-color 200ms ease, outline 120ms ease;
-    position: relative;
 }
-.strip-segment:hover {
-    filter: brightness(1.15);
-}
-.strip-segment-dragover {
-    outline: 2px solid #3b82f6;
-    outline-offset: -1px;
-}
-body.night-mode .strip-segment {
-    background-color: #475569;
+.strip-seg-hit.strip-segment-dragover {
+    fill: rgba(59, 130, 246, 0.2);
 }
 
 .strip-point {
+    position: absolute;
+    left: 50%;
     width: 10px;
     height: 10px;
     border-radius: 9999px;
-    flex-shrink: 0;
+    transform: translate(-50%, -50%);
     cursor: default;
     z-index: 3;
 }
 .strip-point-start { background-color: #22c55e; }
 .strip-point-mark { background-color: #f59e0b; cursor: ns-resize; }
 .strip-point-end { background-color: #ef4444; }
-.strip-point-progressing { background-color: #3b82f6; position: relative; }
+.strip-point-progressing { background-color: #3b82f6; }
 
 .strip-progressing-label {
     position: absolute;
@@ -1390,17 +1392,22 @@ body.night-mode .timeline-clock-bezel {
 }
 .day-strip-line {
     position: relative;
-    width: 6px;
+    width: 22px;
     flex-shrink: 0;
-    border-radius: 3px;
-    background-color: #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
 }
-.day-strip-segment {
+.day-strip-svg {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    background-color: #cbd5e1;
+    height: 100%;
+    overflow: visible;
+}
+.day-strip-seg-path {
+    fill: none;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
 }
 .day-strip-point {
     position: absolute;
@@ -1428,8 +1435,6 @@ body.night-mode .timeline-clock-bezel {
 }
 
 body.night-mode .day-strip-time { color: #cbd5e1; }
-body.night-mode .day-strip-line { background-color: #334155; }
-body.night-mode .day-strip-segment { background-color: #475569; }
 
 body.night-mode .timeline-day-box {
     background-color: #1e293b;

@@ -1,5 +1,14 @@
 function parseISO(s){ return new Date(s + 'T00:00:00'); }
 
+// Local, timezone-naive ISO timestamp (YYYY-MM-DDTHH:MM:SS) matching Python's
+// datetime.now().isoformat(). Avoids Date.toISOString()'s UTC 'Z' suffix, which
+// the server parses as offset-aware and then can't compare against stored naive times.
+function localISO(d){
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+        + `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function isoDate(d){
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');

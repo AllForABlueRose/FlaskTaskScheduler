@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
@@ -7,6 +7,11 @@ from db import db_connect
 from routes.auth import login_required
 
 timeline_bp = Blueprint('timeline', __name__)
+
+# A mark cannot be dragged closer than this to either neighbouring anchor, so the
+# segments before and after it never collapse below a usable length. Mirrors
+# STRIP_MIN_SEGMENT_MS on the client.
+STRIP_MIN_SEGMENT = timedelta(minutes=1)
 
 
 @timeline_bp.route('/api/timeline/assignments')
@@ -276,9 +281,10 @@ def strip_mark_update():
         ).fetchone()
         if not row:
             return jsonify({'error': 'mark not found'}), 404
-        # Enforce the strict-ordering invariant on the server too: the new time
-        # must lie between the prev and next anchor points (start, neighbouring
-        # marks, or stopped_at / now).
+        # Enforce the ordering + minimum-gap invariant on the server too: the new
+        # time must lie between the prev and next anchor points (start, neighbouring
+        # marks, or stopped_at / now), keeping at least STRIP_MIN_SEGMENT on each
+        # side when the gap is wide enough to allow it.
         try:
             new_ts = datetime.fromisoformat(marked_at)
         except ValueError:
@@ -298,13 +304,30 @@ def strip_mark_update():
             next_ts = datetime.fromisoformat(row['stopped_at'])
         else:
             next_ts = datetime.now()
-        if not (prev_ts < new_ts < next_ts):
+        if next_ts - prev_ts > 2 * STRIP_MIN_SEGMENT:
+            lo, hi = prev_ts + STRIP_MIN_SEGMENT, next_ts - STRIP_MIN_SEGMENT
+        else:
+            lo, hi = prev_ts, next_ts  # gap too tight to honour the minimum on both sides
+        if not (lo <= new_ts <= hi):
             return jsonify({'error': 'marked_at outside neighbour bounds'}), 400
         conn.execute(
             'UPDATE timeline_marks SET marked_at=? WHERE id=?',
             (marked_at, mark_id)
         )
-    return jsonify({'ok': True})
+        # Adjusting a point is a tamper signal: straighten the segments immediately
+        # before and after it so the record visibly records that the point moved.
+        # Segment i spans points[i]..points[i+1]; this mark is point sort_order+1,
+        # so its neighbours are segment_index sort_order and sort_order+1.
+        conn.execute(
+            'UPDATE timeline_segments SET straightened=1 '
+            'WHERE session_id=? AND segment_index IN (?, ?)',
+            (row['session_id'], row['sort_order'], row['sort_order'] + 1)
+        )
+        segments = conn.execute(
+            'SELECT * FROM timeline_segments WHERE session_id=? ORDER BY segment_index',
+            (row['session_id'],)
+        ).fetchall()
+    return jsonify({'ok': True, 'segments': [dict(s) for s in segments]})
 
 
 @timeline_bp.route('/api/timeline/strip/segment/assign', methods=['POST'])

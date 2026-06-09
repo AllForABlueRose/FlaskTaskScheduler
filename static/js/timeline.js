@@ -13,6 +13,70 @@ let stripUpdateInterval = null;
 
 const STRIP_TOTAL_MS = 8 * 60 * 60 * 1000;
 
+// ── Strip wobble ──
+// Each segment is drawn as a gently curving SVG stroke rather than a straight bar.
+// The curve is one continuous seeded signal W(t) over the session's elapsed minutes
+// (seeded from the session id, so every session is unique). A segment renders the
+// slice of W over its own [t0, t1] time range. Because a completed segment's range
+// is fixed, its wobble is set in stone the instant a mark closes it; only the live
+// last segment (whose t1 = now keeps advancing) keeps revealing more of the curve,
+// which is the "changes over time, but very slightly" behaviour. The same W and the
+// same fixed ranges reproduce byte-for-byte on the finalized day record. Points are
+// never offset by the wobble — they always sit on the centre axis.
+const STRIP_LINE_W = 28;            // svg user units == device px of the wobble band width
+const STRIP_VIEW_H = 1000;          // svg user-unit height; maps to the rendered line height
+const STRIP_WOBBLE_AMP = 9;         // max horizontal excursion of the curve, in user units
+const STRIP_MIN_SEGMENT_MS = 60 * 1000; // a mark cannot be dragged within this of a neighbour
+const STRIP_MIN_SEGMENT_PX = 22;    // floor height per segment so every segment stays legible
+
+// Deterministic per-session wobble parameters from an integer seed (mulberry32).
+// f1/f2 are angular frequencies in radians per elapsed minute.
+function stripSeedParams(seed) {
+    let s = (seed >>> 0) || 1;
+    const rnd = () => {
+        s = (s + 0x6D2B79F5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    return {
+        f1: 1.5 + rnd() * 2.5,
+        f2: 4 + rnd() * 4,
+        p1: rnd() * Math.PI * 2,
+        p2: rnd() * Math.PI * 2,
+        a2: 0.25 + rnd() * 0.45,
+        dir: rnd() < 0.5 ? -1 : 1,
+    };
+}
+
+// Horizontal offset (user units) of the curve at tMin minutes past the session start.
+function stripWobbleAt(tMin, P) {
+    const w = Math.sin(tMin * P.f1 + P.p1) + P.a2 * Math.sin(tMin * P.f2 + P.p2);
+    return P.dir * STRIP_WOBBLE_AMP * (w / (1 + P.a2));
+}
+
+// SVG path for the slice of the curve over absolute time [t0, t1] (ms), drawn down
+// the line fraction range [fa, fb]. A straightened segment is a plain vertical line
+// on the centre axis (tamper mark).
+function stripSegmentPath(t0, t1, startTime, fa, fb, P, straight) {
+    const cx = STRIP_LINE_W / 2;
+    const ya = fa * STRIP_VIEW_H;
+    const yb = fb * STRIP_VIEW_H;
+    if (straight) return 'M ' + cx + ' ' + ya.toFixed(2) + ' L ' + cx + ' ' + yb.toFixed(2);
+    const steps = Math.max(2, Math.round((yb - ya) / 18));
+    let d = '';
+    for (let k = 0; k <= steps; k++) {
+        const r = k / steps;
+        const tMin = (t0 + (t1 - t0) * r - startTime) / 60000;
+        const x = (cx + stripWobbleAt(tMin, P)).toFixed(2);
+        const y = (ya + (yb - ya) * r).toFixed(2);
+        d += (k === 0 ? 'M ' : 'L ') + x + ' ' + y + ' ';
+    }
+    return d.trim();
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 function initTimeline() {
     if (timelineInitialized) return;
     timelineInitialized = true;
@@ -259,6 +323,15 @@ function renderDayStrip(entry) {
     const labels = document.createElement('div');
     labels.className = 'day-strip-labels';
 
+    // Same seed (session id) and phase 0 as the strip that produced this record, so
+    // the day box reproduces that session's unique wobble signature exactly.
+    const P = stripSeedParams(session.id);
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'day-strip-svg');
+    svg.setAttribute('viewBox', '0 0 ' + STRIP_LINE_W + ' ' + STRIP_VIEW_H);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    lineCol.appendChild(svg);
+
     for (let i = 0; i < points.length - 1; i++) {
         const segRecord = entry.segments.find(s => s.segment_index === i);
         const assignment = segRecord && segRecord.assignment_id
@@ -266,11 +339,14 @@ function renderDayStrip(entry) {
             : null;
         const color = assignment ? (assignment.color || '#64748b') : '#cbd5e1';
 
-        const seg = document.createElement('div');
-        seg.className = 'day-strip-segment';
-        seg.style.height = ((points[i + 1] - points[i]) / total) * 100 + '%';
-        seg.style.backgroundColor = color;
-        lineCol.appendChild(seg);
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('class', 'day-strip-seg-path');
+        path.setAttribute('stroke', color);
+        path.setAttribute('d', stripSegmentPath(
+            points[i], points[i + 1], startMs,
+            (points[i] - startMs) / total, (points[i + 1] - startMs) / total,
+            P, !!(segRecord && segRecord.straightened)));
+        svg.appendChild(path);
 
         if (assignment) {
             const label = document.createElement('div');
@@ -568,86 +644,109 @@ function renderStripLine() {
     const line = document.getElementById('stripLine');
     const container = document.getElementById('stripLineContainer');
     if (!line || !container) return;
-    if (!stripSession) { line.style.height = '0'; line.innerHTML = ''; return; }
+    if (!stripSession) { line.style.height = '0'; line.style.minHeight = ''; line.innerHTML = ''; return; }
 
     const startTime = new Date(stripSession.started_at).getTime();
     const now = stripSession.stopped_at ? new Date(stripSession.stopped_at).getTime() : Date.now();
-    const elapsedMs = Math.max(0, now - startTime);
-    const elapsedRatio = Math.min(1.0, elapsedMs / STRIP_TOTAL_MS);
+    const span = now - startTime;
+    const elapsedRatio = Math.min(1.0, Math.max(0, span) / STRIP_TOTAL_MS);
 
-    line.style.height = (elapsedRatio * 100) + '%';
     line.innerHTML = '';
-
-    if (elapsedRatio === 0) return;
 
     const points = [startTime];
     for (const m of stripMarks) {
         points.push(new Date(m.marked_at).getTime());
     }
     points.push(now);
+    const nseg = points.length - 1;
 
-    for (let i = 0; i < points.length - 1; i++) {
-        const segStart = points[i];
-        const segEnd = points[i + 1];
-        const segStartRatio = (segStart - startTime) / STRIP_TOTAL_MS;
-        const segEndRatio = Math.min(elapsedRatio, (segEnd - startTime) / STRIP_TOTAL_MS);
-        const segHeightPct = elapsedRatio > 0 ? ((segEndRatio - segStartRatio) / elapsedRatio) * 100 : 0;
+    // Lay the segments out in pixels: each is proportional to its duration against the
+    // 8h window, but never shorter than STRIP_MIN_SEGMENT_PX. So a just-marked segment
+    // (≈0 duration) still spawns at its minimum length instead of collapsing onto the
+    // point above it, and the line as a whole grows with elapsed time.
+    const idealTotalPx = elapsedRatio * (container.clientHeight || 0);
+    const cum = [0];
+    for (let i = 0; i < nseg; i++) {
+        const dur = points[i + 1] - points[i];
+        const prop = span > 0 ? (dur / span) * idealTotalPx : 0;
+        cum.push(cum[i] + Math.max(STRIP_MIN_SEGMENT_PX, prop));
+    }
+    const lineH = cum[nseg];
+    line.style.minHeight = '';
+    line.style.height = lineH + 'px';
+    const fracAt = (i) => lineH > 0 ? cum[i] / lineH : 0;
 
+    const P = stripSeedParams(stripSession.id);
+    const isProgressing = !stripSession.stopped_at;
+
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'strip-svg');
+    svg.setAttribute('viewBox', '0 0 ' + STRIP_LINE_W + ' ' + STRIP_VIEW_H);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    line.appendChild(svg);
+
+    for (let i = 0; i < nseg; i++) {
+        const fa = fracAt(i);
+        const fb = fracAt(i + 1);
         const segRecord = stripSegments.find(s => s.segment_index === i);
         const assignment = segRecord && segRecord.assignment_id
             ? timelineAssignments.find(a => a.id === segRecord.assignment_id)
             : null;
+        const straight = !!(segRecord && segRecord.straightened);
+        const color = assignment ? assignment.color : '#cbd5e1';
 
-        // Mark point before segment (except for the first segment which gets a start dot)
-        if (i === 0) {
-            const startDot = document.createElement('div');
-            startDot.className = 'strip-point strip-point-start';
-            startDot.appendChild(makeStripPointLabel(startTime));
-            startDot.addEventListener('mouseenter', (ev) => showStripPointHover(ev, startTime));
-            startDot.addEventListener('mousemove', moveHover);
-            startDot.addEventListener('mouseleave', hideHover);
-            line.appendChild(startDot);
-        }
+        // The wobble is the slice of W over this segment's actual [t0, t1] time range.
+        // Completed segments have a fixed range, so their wobble is set in stone; only
+        // the live last segment (t1 = now) keeps revealing more of the curve.
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('class', 'strip-seg-path');
+        path.setAttribute('stroke', color);
+        path.setAttribute('d', stripSegmentPath(points[i], points[i + 1], startTime, fa, fb, P, straight));
+        svg.appendChild(path);
 
-        const segEl = document.createElement('div');
-        segEl.className = 'strip-segment';
-        segEl.style.height = segHeightPct + '%';
-        segEl.style.backgroundColor = assignment ? assignment.color : '';
-        segEl.dataset.segmentId = segRecord ? segRecord.id : '';
-        segEl.dataset.segmentIndex = i;
-
-        segEl.addEventListener('dragover', (e) => { e.preventDefault(); segEl.classList.add('strip-segment-dragover'); });
-        segEl.addEventListener('dragleave', () => { segEl.classList.remove('strip-segment-dragover'); });
-        segEl.addEventListener('drop', (e) => { e.preventDefault(); segEl.classList.remove('strip-segment-dragover'); dropOnStripSegment(e, segRecord); });
-
-        const capturedStart = segStart;
-        const capturedEnd = segEnd;
+        // Transparent rectangular hit area so the whole segment band — not just the
+        // thin curve — is a drag/drop and hover target.
+        const hit = document.createElementNS(SVG_NS, 'rect');
+        hit.setAttribute('class', 'strip-seg-hit');
+        hit.setAttribute('x', '0');
+        hit.setAttribute('y', (fa * STRIP_VIEW_H).toFixed(2));
+        hit.setAttribute('width', STRIP_LINE_W);
+        hit.setAttribute('height', ((fb - fa) * STRIP_VIEW_H).toFixed(2));
+        hit.addEventListener('dragover', (e) => { e.preventDefault(); hit.classList.add('strip-segment-dragover'); });
+        hit.addEventListener('dragleave', () => { hit.classList.remove('strip-segment-dragover'); });
+        hit.addEventListener('drop', (e) => { e.preventDefault(); hit.classList.remove('strip-segment-dragover'); dropOnStripSegment(e, segRecord); });
+        const capturedStart = points[i];
+        const capturedEnd = points[i + 1];
         const capturedAssignment = assignment;
-        segEl.addEventListener('mouseenter', (ev) => showStripSegmentHover(ev, capturedStart, capturedEnd, capturedAssignment));
-        segEl.addEventListener('mousemove', moveHover);
-        segEl.addEventListener('mouseleave', hideHover);
+        hit.addEventListener('mouseenter', (ev) => showStripSegmentHover(ev, capturedStart, capturedEnd, capturedAssignment));
+        hit.addEventListener('mousemove', moveHover);
+        hit.addEventListener('mouseleave', hideHover);
+        svg.appendChild(hit);
+    }
 
-        line.appendChild(segEl);
+    // Points are overlaid on the centre axis at their laid-out fraction, so the wobble
+    // never displaces them.
+    const startDot = makeStripPointDot('strip-point-start', fracAt(0));
+    startDot.appendChild(makeStripPointLabel(startTime));
+    startDot.addEventListener('mouseenter', (ev) => showStripPointHover(ev, startTime));
+    startDot.addEventListener('mousemove', moveHover);
+    startDot.addEventListener('mouseleave', hideHover);
+    line.appendChild(startDot);
 
-        // Mark dot after segment (between segments)
-        if (i < points.length - 2) {
-            const dotEl = document.createElement('div');
-            dotEl.className = 'strip-point strip-point-mark';
-            const markRecord = stripMarks[i];
-            const markTime = points[i + 1];
-            dotEl.appendChild(makeStripPointLabel(markTime));
-            dotEl.addEventListener('mouseenter', (ev) => showStripPointHover(ev, new Date(markRecord.marked_at).getTime()));
-            dotEl.addEventListener('mousemove', moveHover);
-            dotEl.addEventListener('mouseleave', hideHover);
-            dotEl.addEventListener('mousedown', (ev) => startMarkDrag(ev, markRecord));
-            line.appendChild(dotEl);
-        }
+    for (let i = 0; i < stripMarks.length; i++) {
+        const markRecord = stripMarks[i];
+        const markTime = new Date(markRecord.marked_at).getTime();
+        const dotEl = makeStripPointDot('strip-point-mark', fracAt(i + 1));
+        dotEl.appendChild(makeStripPointLabel(markTime));
+        dotEl.addEventListener('mouseenter', (ev) => showStripPointHover(ev, markTime));
+        dotEl.addEventListener('mousemove', moveHover);
+        dotEl.addEventListener('mouseleave', hideHover);
+        dotEl.addEventListener('mousedown', (ev) => startMarkDrag(ev, markRecord));
+        line.appendChild(dotEl);
     }
 
     // End / progressing point
-    const isProgressing = !stripSession.stopped_at;
-    const endDot = document.createElement('div');
-    endDot.className = 'strip-point ' + (isProgressing ? 'strip-point-progressing' : 'strip-point-end');
+    const endDot = makeStripPointDot(isProgressing ? 'strip-point-progressing' : 'strip-point-end', fracAt(nseg));
     endDot.addEventListener('mouseenter', (ev) => showStripPointHover(ev, isProgressing ? Date.now() : now));
     endDot.addEventListener('mousemove', moveHover);
     endDot.addEventListener('mouseleave', hideHover);
@@ -661,6 +760,13 @@ function renderStripLine() {
         endDot.appendChild(makeStripPointLabel(now));
     }
     line.appendChild(endDot);
+}
+
+function makeStripPointDot(cls, fraction) {
+    const dot = document.createElement('div');
+    dot.className = 'strip-point ' + cls;
+    dot.style.top = (fraction * 100) + '%';
+    return dot;
 }
 
 function makeStripPointLabel(timestamp) {
@@ -699,10 +805,13 @@ function startMarkDrag(e, mark) {
         const deltaPx = ev.clientY - lastClientY;
         const { prev, next } = neighbours();
         let newTime = new Date(mark.marked_at).getTime() + deltaPx * msPerPx;
-        // Strict bounds: cannot bypass adjacent points. 1s epsilon keeps strict ordering.
-        if (newTime <= prev) newTime = prev + 1000;
-        if (newTime >= next) newTime = next - 1000;
-        mark.marked_at = new Date(newTime).toISOString();
+        // The before/after segments stretch with the drag but neither may shrink
+        // below STRIP_MIN_SEGMENT_MS. When the gap is too tight to honour the
+        // minimum on both sides, pin to its midpoint.
+        const lo = prev + STRIP_MIN_SEGMENT_MS;
+        const hi = next - STRIP_MIN_SEGMENT_MS;
+        newTime = lo <= hi ? Math.min(hi, Math.max(lo, newTime)) : (prev + next) / 2;
+        mark.marked_at = localISO(new Date(newTime));
         lastClientY = ev.clientY;
         renderStripLine();
     }
@@ -711,11 +820,23 @@ function startMarkDrag(e, mark) {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         document.body.style.cursor = '';
+        // Adjusting the point straightens the segments around it (tamper marker).
+        // Reflect it immediately, then let the server's authoritative segment list
+        // reconcile (it persists the same straightening so it carries to the day).
+        for (const s of stripSegments) {
+            if (s.segment_index === idx || s.segment_index === idx + 1) s.straightened = 1;
+        }
+        renderStripLine();
         fetch('/api/timeline/strip/mark/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mark_id: mark.id, marked_at: mark.marked_at })
-        }).then(r => { if (!r.ok) loadStripSession(); });
+        }).then(r => {
+            if (!r.ok) { loadStripSession(); return; }
+            r.json().then(data => {
+                if (data.segments) { stripSegments = data.segments; renderStripLine(); }
+            });
+        });
     }
 
     document.addEventListener('mousemove', onMove);
