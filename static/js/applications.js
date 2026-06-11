@@ -39,6 +39,7 @@ function wireAppSwipe(){
     const area = document.getElementById('appPreviewArea');
     if (!area) return;
     area.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;          // left button only — right drag pans Excel
         if (appTotalPages <= 1) return;
         appSwipeStartX = e.clientX;
         area.classList.add('app-preview-grabbing');
@@ -290,7 +291,7 @@ async function loadAppExcel(area, page){
 }
 
 function renderAppExcel(area, data){
-    let html = '<div class="overflow-auto flex-1 min-h-0"><table class="app-excel-table"><thead><tr>';
+    let html = '<div class="app-excel-scroll"><div class="app-excel-zoom"><table class="app-excel-table"><thead><tr>';
     for (const h of data.headers) html += '<th>' + escapeHtml(h) + '</th>';
     html += '</tr></thead><tbody>';
     for (const row of data.rows){
@@ -298,10 +299,13 @@ function renderAppExcel(area, data){
         for (const cell of row) html += '<td>' + escapeHtml(cell) + '</td>';
         html += '</tr>';
     }
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     if (data.truncated) html += '<div class="text-xs text-slate-500 mt-2 italic">Showing first 500 rows</div>';
     html += '</div>';
     area.innerHTML = html;
+
+    const scroll = area.querySelector('.app-excel-scroll');
+    if (scroll) wireExcelPanZoom(scroll);
 
     appCurrentPage = data.page;
     appTotalPages = data.total_pages;
@@ -313,6 +317,54 @@ function renderAppExcel(area, data){
         updateAppPageIndicator(data.page_label);
     }
     updateAppPreviewCursor();
+}
+
+let appExcelZoom = 1;
+const APP_EXCEL_ZOOM_MIN = 0.3;
+const APP_EXCEL_ZOOM_MAX = 4;
+const APP_EXCEL_ZOOM_STEP = 0.1;
+
+// Right-click drag to pan, scroll to zoom — scoped to a single Excel render.
+// Listeners live on the freshly-created scroll element, so a re-render that
+// replaces innerHTML drops them with the old node; nothing accumulates.
+function wireExcelPanZoom(scroll){
+    const zoomTarget = scroll.querySelector('.app-excel-zoom');
+    appExcelZoom = 1;
+    if (zoomTarget) zoomTarget.style.zoom = appExcelZoom;
+
+    scroll.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const step = e.deltaY < 0 ? APP_EXCEL_ZOOM_STEP : -APP_EXCEL_ZOOM_STEP;
+        const next = Math.min(APP_EXCEL_ZOOM_MAX, Math.max(APP_EXCEL_ZOOM_MIN, appExcelZoom + step));
+        appExcelZoom = Math.round(next * 10) / 10;
+        if (zoomTarget) zoomTarget.style.zoom = appExcelZoom;
+    }, { passive: false });
+
+    let panning = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    scroll.addEventListener('pointerdown', (e) => {
+        if (e.button !== 2) return;          // right button only
+        panning = true;
+        startX = e.clientX; startY = e.clientY;
+        startLeft = scroll.scrollLeft; startTop = scroll.scrollTop;
+        scroll.classList.add('app-excel-panning');
+        scroll.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    });
+    scroll.addEventListener('pointermove', (e) => {
+        if (!panning) return;
+        scroll.scrollLeft = startLeft - (e.clientX - startX);
+        scroll.scrollTop = startTop - (e.clientY - startY);
+    });
+    const endPan = (e) => {
+        if (!panning) return;
+        panning = false;
+        scroll.classList.remove('app-excel-panning');
+        try { scroll.releasePointerCapture(e.pointerId); } catch {}
+    };
+    scroll.addEventListener('pointerup', endPan);
+    scroll.addEventListener('pointercancel', endPan);
+    // Suppress the browser menu so the drag-to-pan gesture reads cleanly.
+    scroll.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 async function loadAppWord(area){

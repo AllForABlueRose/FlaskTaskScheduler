@@ -926,6 +926,27 @@ body.night-mode .app-icon-date {
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+.app-excel-scroll {
+    flex: 1;
+    align-self: stretch;
+    width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    position: relative;
+    cursor: grab;
+}
+.app-excel-scroll.app-excel-panning {
+    cursor: grabbing;
+    user-select: none;
+}
+.app-excel-zoom {
+    /* zoom (not transform) so scroll extents and sticky headers stay correct */
+    display: block;
+    width: fit-content;
+    min-width: 100%;
+    transform-origin: 0 0;
+}
+
 .app-excel-table {
     width: 100%;
     border-collapse: collapse;
