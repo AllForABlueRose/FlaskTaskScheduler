@@ -338,7 +338,9 @@ function renderScheduleEventChips(){
             chip.className = 'day-event-chip';
             chip.style.backgroundColor = ev.color || UNCATEGORIZED_COLOR;
             chip.textContent = ev.title;
-            chip.title = ev.title;
+            chip.addEventListener('mouseenter', (e) => showEventHover(e, ev));
+            chip.addEventListener('mousemove', moveEventHover);
+            chip.addEventListener('mouseleave', hideEventHover);
             container.appendChild(chip);
         }
     });

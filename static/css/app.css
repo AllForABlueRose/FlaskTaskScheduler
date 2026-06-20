@@ -256,6 +256,13 @@ body.night-mode #eventModal .bg-white {
     background-color: #1e293b;
     color: #e2e8f0;
 }
+body.night-mode #kanbanCardModal .bg-white {
+    background-color: #1e293b;
+    color: #e2e8f0;
+}
+body.night-mode .kanban-color-swatch.kanban-color-swatch-selected {
+    border-color: #f1f5f9;
+}
 
 /* Sidebar event groups (one rounded tinted box per category) */
 .events-group-box {
@@ -310,7 +317,8 @@ body.night-mode .events-group-box .events-list-row:hover {
     padding-top: 2px;
 }
 .day-event-chip {
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: default;
     color: white;
     font-size: 0.65rem;
     font-weight: 500;
@@ -322,6 +330,9 @@ body.night-mode .events-group-box .events-list-row:hover {
     text-overflow: ellipsis;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     line-height: 1.3;
+}
+.day-event-chip:hover {
+    opacity: 0.85;
 }
 
 /* Tab shell: hover-revealed header */
@@ -840,6 +851,10 @@ body.terminal-chord-on .terminal-panel.terminal-panel-open {
 .app-preview-grabbing {
     cursor: grabbing;
 }
+.app-preview-panning,
+.app-preview-panning * {
+    cursor: grabbing;
+}
 
 /* Action buttons */
 .app-action-btn {
@@ -901,10 +916,21 @@ body.terminal-chord-on .terminal-panel.terminal-panel-open {
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+.app-excel-viewport {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+}
+.app-excel-zoom {
+    width: max-content;
+}
 .app-excel-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8rem;
+}
+.app-excel-zoom .app-excel-table {
+    width: max-content;
 }
 .app-excel-table th {
     background-color: #f1f5f9;
@@ -926,6 +952,201 @@ body.terminal-chord-on .terminal-panel.terminal-panel-open {
 }
 .app-excel-table tr:hover td {
     background-color: #f8fafc;
+}
+
+/* TaskBoard (Kanban) */
+.kanban-board {
+    align-items: flex-start;
+}
+.kanban-column {
+    width: 17rem;
+    max-height: 100%;
+    background-color: #e2e8f0;
+    border-radius: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.kanban-col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
+.kanban-col-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+.kanban-col-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #1e293b;
+    cursor: text;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kanban-col-title-input {
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0.1rem 0.3rem;
+    border: 1px solid #94a3b8;
+    border-radius: 0.3rem;
+    width: 9rem;
+}
+.kanban-col-count {
+    font-size: 0.7rem;
+    color: #64748b;
+    background-color: #cbd5e1;
+    border-radius: 999px;
+    padding: 0 0.45rem;
+    line-height: 1.5;
+}
+.kanban-col-delete {
+    color: #94a3b8;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.25rem;
+    border-radius: 0.3rem;
+}
+.kanban-col-delete:hover {
+    color: #ef4444;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+.kanban-col-cards {
+    flex: 1;
+    min-height: 2rem;
+    overflow-y: auto;
+    padding: 0.25rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.kanban-col-cards-over {
+    background-color: rgba(148, 163, 184, 0.25);
+    border-radius: 0.5rem;
+}
+.kanban-card {
+    background-color: white;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    border-left: 4px solid #cbd5e1;
+    cursor: pointer;
+}
+.kanban-card:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+.kanban-card-dragging {
+    opacity: 0.5;
+}
+.kanban-card-title {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #1e293b;
+    word-break: break-word;
+}
+.kanban-card-desc {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 0.25rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.kanban-col-add-card {
+    text-align: left;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    color: #475569;
+    border-radius: 0 0 0.75rem 0.75rem;
+}
+.kanban-col-add-card:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: #1e293b;
+}
+.kanban-add-column {
+    width: 17rem;
+}
+.kanban-add-column-btn {
+    width: 100%;
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.75rem;
+    background-color: rgba(148, 163, 184, 0.25);
+    color: #475569;
+    font-size: 0.85rem;
+}
+.kanban-add-column-btn:hover {
+    background-color: rgba(148, 163, 184, 0.4);
+}
+.kanban-add-column-input {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #94a3b8;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+}
+.kanban-add-column-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.kanban-add-column-confirm {
+    background-color: #0f172a;
+    color: white;
+    padding: 0.3rem 0.8rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+}
+.kanban-add-column-cancel {
+    color: #64748b;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+}
+.kanban-color-swatch {
+    border-color: transparent;
+    cursor: pointer;
+}
+.kanban-color-swatch-selected {
+    border-color: #0f172a;
+}
+
+body.night-mode .kanban-column {
+    background-color: #1e293b;
+}
+body.night-mode .kanban-col-title {
+    color: #e2e8f0;
+}
+body.night-mode .kanban-col-count {
+    background-color: #334155;
+    color: #cbd5e1;
+}
+body.night-mode .kanban-col-cards-over {
+    background-color: rgba(148, 163, 184, 0.15);
+}
+body.night-mode .kanban-card {
+    background-color: #0f172a;
+    border-left-color: #334155;
+}
+body.night-mode .kanban-card-title {
+    color: #e2e8f0;
+}
+body.night-mode .kanban-card-desc {
+    color: #94a3b8;
+}
+body.night-mode .kanban-col-add-card {
+    color: #94a3b8;
+}
+body.night-mode .kanban-col-add-card:hover {
+    color: #e2e8f0;
+}
+body.night-mode .kanban-add-column-btn {
+    background-color: rgba(148, 163, 184, 0.15);
+    color: #cbd5e1;
 }
 
 .app-word-content {

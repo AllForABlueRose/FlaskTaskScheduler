@@ -7,6 +7,7 @@ let appPdfDoc = null;
 let appPdfRendering = false;
 let appInitialized = false;
 let appSwipeStartX = null;
+let appZoom = 1;
 let appApprovedTree = [];
 let appApprovedMode = false;
 let appApprovedFolder = '';
@@ -22,6 +23,7 @@ function initApplications(){
         });
     }
     wireAppSwipe();
+    wireAppZoomPan();
     loadApprovedTree();
     const approvedArea = document.getElementById('appApprovalArea');
     if (approvedArea) {
@@ -39,6 +41,7 @@ function wireAppSwipe(){
     const area = document.getElementById('appPreviewArea');
     if (!area) return;
     area.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
         if (appTotalPages <= 1) return;
         appSwipeStartX = e.clientX;
         area.classList.add('app-preview-grabbing');
@@ -56,6 +59,70 @@ function wireAppSwipe(){
         appSwipeStartX = null;
         area.classList.remove('app-preview-grabbing');
     });
+}
+
+const APP_ZOOM_MIN = 0.25;
+const APP_ZOOM_MAX = 5;
+
+function applyExcelZoom(){
+    const wrap = document.querySelector('#appPreviewArea .app-excel-zoom');
+    if (wrap) wrap.style.zoom = appZoom;
+}
+
+// Wheel zooms the sheet (anchored on the cursor); right-drag pans the
+// overflowing viewport. Both are scoped to the Excel preview by looking up
+// .app-excel-viewport, so image/PDF/Word previews are unaffected.
+function wireAppZoomPan(){
+    const area = document.getElementById('appPreviewArea');
+    if (!area) return;
+
+    area.addEventListener('contextmenu', (e) => {
+        if (area.querySelector('.app-excel-viewport')) e.preventDefault();
+    });
+
+    area.addEventListener('wheel', (e) => {
+        const vp = area.querySelector('.app-excel-viewport');
+        if (!vp) return;
+        e.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const offX = e.clientX - rect.left;
+        const offY = e.clientY - rect.top;
+        const before = appZoom;
+        const next = appZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1);
+        appZoom = Math.min(APP_ZOOM_MAX, Math.max(APP_ZOOM_MIN, next));
+        if (appZoom === before) return;
+        applyExcelZoom();
+        const ratio = appZoom / before;
+        vp.scrollLeft = (vp.scrollLeft + offX) * ratio - offX;
+        vp.scrollTop = (vp.scrollTop + offY) * ratio - offY;
+    }, { passive: false });
+
+    let panVp = null;
+    let panStartX = 0, panStartY = 0, panStartL = 0, panStartT = 0;
+    area.addEventListener('pointerdown', (e) => {
+        if (e.button !== 2) return;
+        const vp = area.querySelector('.app-excel-viewport');
+        if (!vp) return;
+        panVp = vp;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        panStartL = vp.scrollLeft;
+        panStartT = vp.scrollTop;
+        area.classList.add('app-preview-panning');
+        area.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    });
+    area.addEventListener('pointermove', (e) => {
+        if (!panVp) return;
+        panVp.scrollLeft = panStartL - (e.clientX - panStartX);
+        panVp.scrollTop = panStartT - (e.clientY - panStartY);
+    });
+    const endPan = () => {
+        panVp = null;
+        area.classList.remove('app-preview-panning');
+    };
+    area.addEventListener('pointerup', endPan);
+    area.addEventListener('pointercancel', endPan);
 }
 
 async function fetchApplicationFiles(){
@@ -130,6 +197,7 @@ function selectAppFile(file){
     appTotalPages = 0;
     appPdfDoc = null;
     appApprovedMode = false;
+    appZoom = 1;
     renderAppFileList();
     renderApprovedGrid();
     loadAppPreview();
@@ -286,7 +354,7 @@ async function loadAppExcel(area, page){
 }
 
 function renderAppExcel(area, data){
-    let html = '<div class="overflow-auto flex-1 min-h-0"><table class="app-excel-table"><thead><tr>';
+    let html = '<div class="app-excel-viewport"><div class="app-excel-zoom"><table class="app-excel-table"><thead><tr>';
     for (const h of data.headers) html += '<th>' + escapeHtml(h) + '</th>';
     html += '</tr></thead><tbody>';
     for (const row of data.rows){
@@ -294,10 +362,11 @@ function renderAppExcel(area, data){
         for (const cell of row) html += '<td>' + escapeHtml(cell) + '</td>';
         html += '</tr>';
     }
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     if (data.truncated) html += '<div class="text-xs text-slate-500 mt-2 italic">Showing first 500 rows</div>';
     html += '</div>';
     area.innerHTML = html;
+    applyExcelZoom();
 
     appCurrentPage = data.page;
     appTotalPages = data.total_pages;
@@ -463,6 +532,7 @@ function selectApprovedFile(file){
     appTotalPages = 0;
     appPdfDoc = null;
     appApprovedMode = true;
+    appZoom = 1;
     appApprovedFolder = appApprovedPath.join('/');
     renderAppFileList();
     renderApprovedGrid();

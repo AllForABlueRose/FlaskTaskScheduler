@@ -153,5 +153,26 @@ def init_db():
     if 'approved_path' not in afs_cols:
         c.execute("ALTER TABLE app_file_status ADD COLUMN approved_path TEXT")
 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS kanban_columns(
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS kanban_cards(
+            id TEXT PRIMARY KEY,
+            column_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            color TEXT,
+            position INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_kanban_cards_column ON kanban_cards(column_id)')
+
     conn.commit()
     conn.close()

@@ -51,3 +51,8 @@ def events_view():
 @main_bp.route('/applications')
 def applications_view():
     return _render_app('applications')
+
+
+@main_bp.route('/taskboard')
+def taskboard_view():
+    return _render_app('taskboard')

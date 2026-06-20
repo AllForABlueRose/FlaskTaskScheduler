@@ -12,6 +12,7 @@ window.onload = async () => {
     applyMode((hour >= 8 && hour < 20) ? 'day' : 'night');
     initEvents();
     initApplications();
+    initKanban();
     initTabs();
     initTerminalHover();
     await loadTasks();
