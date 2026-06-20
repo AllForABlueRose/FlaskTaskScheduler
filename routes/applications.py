@@ -320,24 +320,49 @@ def _preview_excel(source, page):
         page = min(page, len(sheets) - 1)
         ws = wb[sheets[page]]
 
+        # openpyxl's reported dimension is often an inflated "used range"
+        # (trailing blank rows/columns left by past edits or formatting), and
+        # every row is padded out to max_column. Trim to the real data bounding
+        # box: drop rows after the last one holding a value, and columns after
+        # the rightmost non-empty cell across all rows.
         rows = []
+        last_data_row = -1
+        ncols = 0
+        truncated = False
         for r in ws.iter_rows(values_only=True):
+            if len(rows) >= MAX_EXCEL_ROWS:
+                if any(cell is not None for cell in r):
+                    truncated = True
+                    break
+                continue
             row = []
-            for cell in r:
+            row_width = 0
+            for idx, cell in enumerate(r):
                 if cell is None:
                     row.append('')
-                elif isinstance(cell, datetime):
-                    row.append(cell.isoformat())
                 else:
-                    row.append(str(cell))
+                    row_width = idx + 1
+                    if isinstance(cell, datetime):
+                        row.append(cell.isoformat())
+                    else:
+                        row.append(str(cell))
             rows.append(row)
+            if row_width:
+                last_data_row = len(rows) - 1
+                if row_width > ncols:
+                    ncols = row_width
 
-        truncated = len(rows) > MAX_EXCEL_ROWS
-        if truncated:
-            rows = rows[:MAX_EXCEL_ROWS]
-
-        headers = rows[0] if rows else []
-        data_rows = rows[1:] if rows else []
+        if last_data_row < 0:
+            headers, data_rows = [], []
+        else:
+            trimmed = []
+            for row in rows[:last_data_row + 1]:
+                row = row[:ncols]
+                if len(row) < ncols:
+                    row.extend([''] * (ncols - len(row)))
+                trimmed.append(row)
+            headers = trimmed[0]
+            data_rows = trimmed[1:]
 
         return jsonify({
             'type': 'excel',

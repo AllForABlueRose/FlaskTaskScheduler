@@ -56,3 +56,8 @@ def applications_view():
 @main_bp.route('/timeline')
 def timeline_view():
     return _render_app('timeline')
+  
+  
+@main_bp.route('/taskboard')
+def taskboard_view():
+    return _render_app('taskboard')

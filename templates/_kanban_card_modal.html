@@ -1,0 +1,43 @@
+<div id="kanbanCardModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl p-5 w-[460px] max-w-full max-h-[85vh] overflow-y-auto shadow-2xl">
+        <div class="space-y-3">
+
+            <h2 id="kanbanCardModalTitle" class="text-lg font-semibold">New Card</h2>
+
+            <input id="kanbanCardTitle" class="border p-2 rounded w-full" placeholder="Title">
+
+            <div>
+                <label class="text-xs text-slate-600 block mb-1">Color</label>
+                <div id="kanbanColorPalette" class="flex gap-2 flex-wrap">
+                    {% for c in ['#3b82f6','#10b981','#f59e0b','#ef4444','#a855f7','#0ea5e9','#64748b','#ec4899'] %}
+                    <button type="button"
+                            class="kanban-color-swatch w-7 h-7 rounded-full border-2"
+                            data-color="{{ c }}"
+                            style="background-color: {{ c }};"
+                            onclick="selectKanbanColor('{{ c }}')"
+                            aria-label="Color {{ c }}"></button>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <textarea id="kanbanCardDescription"
+                      rows="3"
+                      class="border p-2 rounded w-full"
+                      placeholder="Description"></textarea>
+
+            <button id="kanbanCardSaveBtn"
+                    onclick="saveKanbanCard()"
+                    class="bg-green-600 text-white p-2 rounded w-full">
+                Save
+            </button>
+
+            <button id="kanbanCardDeleteBtn"
+                    onclick="deleteKanbanCardFromModal()"
+                    class="hidden bg-red-600 text-white p-2 rounded w-full">
+                Delete
+            </button>
+
+            <button onclick="closeKanbanModal()" class="w-full bg-slate-200 text-slate-900 p-2 rounded">Close</button>
+        </div>
+    </div>
+</div>

@@ -27,6 +27,7 @@
         <a href="{{ url_for('main.events_view') }}" data-tab="events" class="tab-btn">Events</a>
         <a href="{{ url_for('main.applications_view') }}" data-tab="applications" class="tab-btn">Applications</a>
         <a href="{{ url_for('main.timeline_view') }}" data-tab="timeline" class="tab-btn">Timeline</a>
+        <a href="{{ url_for('main.taskboard_view') }}" data-tab="taskboard" class="tab-btn">TaskBoard</a>
     </nav>
 </header>
 
@@ -284,9 +285,18 @@
 
 {% include '_assignment_modal.html' %}
 
+<section id="view-taskboard" class="view view-taskboard flex flex-col flex-1 min-h-0 {{ '' if initial_tab == 'taskboard' else 'view-hidden' }}">
+    <div class="flex items-center justify-between px-4 pt-4 shrink-0">
+        <h1 class="text-2xl font-bold">TaskBoard</h1>
+    </div>
+    <div id="kanbanBoard" class="kanban-board flex-1 min-h-0 flex items-start gap-4 p-4 overflow-x-auto"></div>
+</section>
+
 {% include '_task_modal.html' %}
 
 {% include '_recurrence_modal.html' %}
+
+{% include '_kanban_card_modal.html' %}
 
 {% include '_chip_modal.html' %}
 
@@ -324,6 +334,7 @@
 <script src="{{ url_for('static', filename='js/events.js') }}"></script>
 <script src="{{ url_for('static', filename='js/applications.js') }}"></script>
 <script src="{{ url_for('static', filename='js/timeline.js') }}"></script>
+<script src="{{ url_for('static', filename='js/kanban.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
 {% if role == 'admin' %}
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
