@@ -154,6 +154,61 @@ def init_db():
         c.execute("ALTER TABLE app_file_status ADD COLUMN approved_path TEXT")
 
     c.execute('''
+        CREATE TABLE IF NOT EXISTS assignments(
+            id TEXT PRIMARY KEY,
+            project_code TEXT NOT NULL,
+            title TEXT NOT NULL,
+            color TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_schedule(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slot TEXT NOT NULL,
+            assignment_id TEXT,
+            duration INTEGER DEFAULT 1
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_timeline_slot ON timeline_schedule(slot)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_sessions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_date TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            stopped_at TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_timeline_session_date ON timeline_sessions(session_date)')
+
+    ts_cols = [r[1] for r in c.execute("PRAGMA table_info(timeline_sessions)").fetchall()]
+    if 'finalized' not in ts_cols:
+        c.execute("ALTER TABLE timeline_sessions ADD COLUMN finalized INTEGER DEFAULT 0")
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_marks(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            marked_at TEXT NOT NULL,
+            sort_order INTEGER NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline_segments(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            segment_index INTEGER NOT NULL,
+            assignment_id TEXT
+        )
+    ''')
+
+    seg_cols = [r[1] for r in c.execute("PRAGMA table_info(timeline_segments)").fetchall()]
+    if 'straightened' not in seg_cols:
+        c.execute("ALTER TABLE timeline_segments ADD COLUMN straightened INTEGER DEFAULT 0")
         CREATE TABLE IF NOT EXISTS kanban_columns(
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,

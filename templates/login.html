@@ -131,6 +131,13 @@ function closeAdminLogin() {
     document.getElementById('adminLoginPanel').classList.remove('open');
 }
 
+document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') userLogin();
+});
+document.getElementById('adminPassword').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') adminLogin();
+});
+
 (function() {
     const corner = document.getElementById('adminCorner');
     const panel = document.getElementById('adminLoginPanel');

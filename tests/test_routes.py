@@ -19,6 +19,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import db as db_module
+import ledger as ledger_module
 from werkzeug.security import generate_password_hash
 
 
@@ -34,6 +35,12 @@ class RouteTestBase(unittest.TestCase):
         self._orig_db = db_module.DB
         db_module.DB = self.tmp.name
         db_module.init_db()
+
+        self.tmp_approvals = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        self.tmp_approvals.close()
+        self._orig_approvals_db = ledger_module.APPROVALS_DB
+        ledger_module.APPROVALS_DB = self.tmp_approvals.name
+        ledger_module.init_ledger_db()
 
         with db_module.db_connect() as conn:
             conn.execute(
@@ -54,6 +61,8 @@ class RouteTestBase(unittest.TestCase):
     def tearDown(self):
         db_module.DB = self._orig_db
         os.unlink(self.tmp.name)
+        ledger_module.APPROVALS_DB = self._orig_approvals_db
+        os.unlink(self.tmp_approvals.name)
 
 
 class PageRouteTests(RouteTestBase):
@@ -258,6 +267,326 @@ class LogsApiTests(RouteTestBase):
         self.assertIn('cursor', data)
         self.assertIn('entries', data)
         self.assertIsInstance(data['entries'], list)
+
+
+class ApplicationsChangeDetectionTests(RouteTestBase):
+    """Change detection is mtime-based and must behave identically for every
+    supported file type — the listing endpoint never parses file contents."""
+
+    # one file per supported type; contents are irrelevant to detection
+    TYPED_FILES = {
+        'sheet.xlsx': 'excel',
+        'memo.docx': 'word',
+        'scan.pdf': 'pdf',
+        'photo.png': 'image',
+    }
+
+    def setUp(self):
+        super().setUp()
+        self.folder = tempfile.mkdtemp()
+        for name in self.TYPED_FILES:
+            self._write(name, b'original')
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.folder, ignore_errors=True)
+        super().tearDown()
+
+    def _write(self, name, content):
+        with open(os.path.join(self.folder, name), 'wb') as f:
+            f.write(content)
+
+    def _touch(self, name, offset_seconds=120):
+        """Bump mtime deterministically without sleeping."""
+        path = os.path.join(self.folder, name)
+        st = os.stat(path)
+        os.utime(path, (st.st_atime, st.st_mtime + offset_seconds))
+
+    def _list(self):
+        r = self.client.get('/api/applications/files?folder=' + self.folder)
+        self.assertEqual(r.status_code, 200)
+        return {f['name']: f for f in r.get_json()['files']}
+
+    def _set_status(self, name, status):
+        r = self.client.post('/api/applications/file/status', json={
+            'folder': self.folder, 'filename': name, 'status': status,
+        })
+        self.assertEqual(r.status_code, 200)
+
+    def test_all_types_listed_without_status(self):
+        files = self._list()
+        for name, ftype in self.TYPED_FILES.items():
+            self.assertIn(name, files)
+            self.assertEqual(files[name]['type'], ftype)
+            self.assertNotIn('status', files[name])
+
+    def test_approved_unchanged_stays_approved_all_types(self):
+        for name in self.TYPED_FILES:
+            self._set_status(name, 'approved')
+        files = self._list()
+        for name in self.TYPED_FILES:
+            self.assertEqual(files[name].get('status'), 'approved', name)
+
+    def test_approved_then_changed_reports_modified_all_types(self):
+        for name in self.TYPED_FILES:
+            self._set_status(name, 'approved')
+            self._write(name, b'changed content')
+            self._touch(name)
+        files = self._list()
+        for name in self.TYPED_FILES:
+            self.assertEqual(files[name].get('status'), 'modified', name)
+
+    def test_reapproval_after_change_restores_approved(self):
+        name = 'sheet.xlsx'
+        self._set_status(name, 'approved')
+        self._write(name, b'v2')
+        self._touch(name)
+        self.assertEqual(self._list()[name].get('status'), 'modified')
+        self._set_status(name, 'approved')
+        self.assertEqual(self._list()[name].get('status'), 'approved')
+
+    def test_flag_autoclears_on_change_all_types(self):
+        for name in self.TYPED_FILES:
+            self._set_status(name, 'flagged')
+            self._touch(name)
+        files = self._list()
+        for name in self.TYPED_FILES:
+            self.assertNotIn('status', files[name], name)
+
+    def test_flag_persists_when_unchanged(self):
+        name = 'memo.docx'
+        self._set_status(name, 'flagged')
+        self.assertEqual(self._list()[name].get('status'), 'flagged')
+
+    def test_flag_on_modified_file_wins_over_modified(self):
+        name = 'scan.pdf'
+        self._set_status(name, 'approved')
+        self._write(name, b'v2')
+        self._touch(name)
+        self._set_status(name, 'flagged')
+        self.assertEqual(self._list()[name].get('status'), 'flagged')
+
+    def test_rejected_unchanged_shows_rejected(self):
+        name = 'photo.png'
+        self._set_status(name, 'rejected')
+        self.assertEqual(self._list()[name].get('status'), 'rejected')
+
+    def test_rejected_then_changed_reappears_with_ghost(self):
+        name = 'photo.png'
+        self._set_status(name, 'rejected')
+        self._write(name, b'replacement')
+        self._touch(name)
+        r = self.client.get('/api/applications/files?folder=' + self.folder)
+        entries = [f for f in r.get_json()['files'] if f['name'] == name]
+        ghosts = [f for f in entries if f.get('ghost')]
+        fresh = [f for f in entries if not f.get('ghost')]
+        self.assertEqual(len(ghosts), 1)
+        self.assertEqual(len(fresh), 1)
+        self.assertNotIn('status', fresh[0])
+
+
+class ApprovalLedgerTests(RouteTestBase):
+    """Hash-chained ledger + blob store behaviors behind the approval flow."""
+
+    def setUp(self):
+        super().setUp()
+        self.root = tempfile.mkdtemp()
+        self.folder = os.path.join(self.root, 'clientA', 'projectB')
+        os.makedirs(self.folder)
+        self.fname = 'photo.png'
+        self.original = b'png-bytes-v1'
+        with open(os.path.join(self.folder, self.fname), 'wb') as f:
+            f.write(self.original)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.root, ignore_errors=True)
+        super().tearDown()
+
+    def _approve(self, name=None):
+        r = self.client.post('/api/applications/file/status', json={
+            'folder': self.folder, 'filename': name or self.fname, 'status': 'approved',
+        })
+        self.assertEqual(r.status_code, 200)
+
+    def _status_of(self, name=None):
+        r = self.client.get('/api/applications/files?folder=' + self.folder)
+        files = {f['name']: f for f in r.get_json()['files']}
+        return files[name or self.fname].get('status')
+
+    def _verify(self):
+        r = self.client.get('/api/applications/ledger/verify')
+        self.assertEqual(r.status_code, 200)
+        return r.get_json()
+
+    def test_approve_appends_verified_entry_and_blob(self):
+        import hashlib
+        self._approve()
+        with ledger_module.ledger_connect() as conn:
+            rows = conn.execute('SELECT * FROM approval_ledger').fetchall()
+            self.assertEqual(len(rows), 1)
+            entry = rows[0]
+            self.assertEqual(entry['content_sha256'], hashlib.sha256(self.original).hexdigest())
+            self.assertEqual(entry['approved_path'], 'clientA/projectB/' + self.fname)
+            self.assertEqual(entry['folder'], self.folder)
+            self.assertEqual(entry['approved_by'], self.USERNAME)
+            self.assertEqual(ledger_module.fetch_blob(conn, entry['content_sha256']), self.original)
+        result = self._verify()
+        self.assertTrue(result['ok'], result['errors'])
+
+    def test_mtime_spoofing_does_not_evade_detection(self):
+        self._approve()
+        path = os.path.join(self.folder, self.fname)
+        st = os.stat(path)
+        with open(path, 'wb') as f:
+            f.write(b'png-bytes-TAMPERED')
+        os.utime(path, (st.st_atime, st.st_mtime))  # restore original mtime
+        self.assertEqual(self._status_of(), 'modified')
+
+    def test_reapproval_extends_chain(self):
+        self._approve()
+        with open(os.path.join(self.folder, self.fname), 'wb') as f:
+            f.write(b'png-bytes-v2')
+        self.assertEqual(self._status_of(), 'modified')
+        self._approve()
+        self.assertEqual(self._status_of(), 'approved')
+        with ledger_module.ledger_connect() as conn:
+            count = conn.execute('SELECT COUNT(*) FROM approval_ledger').fetchone()[0]
+        self.assertEqual(count, 2)
+        result = self._verify()
+        self.assertTrue(result['ok'], result['errors'])
+
+    def test_tampered_blob_is_detected(self):
+        self._approve()
+        with ledger_module.ledger_connect() as conn:
+            conn.execute('UPDATE approved_blobs SET content=?', (b'evil-content',))
+        result = self._verify()
+        self.assertFalse(result['ok'])
+        self.assertTrue(any('blob' in e for e in result['errors']))
+        r = self.client.get('/api/applications/file/preview?folder=clientA/projectB'
+                            + '&name=' + self.fname + '&approved=1')
+        self.assertEqual(r.status_code, 409)
+
+    def test_tampered_ledger_row_is_detected(self):
+        self._approve()
+        with ledger_module.ledger_connect() as conn:
+            conn.execute("UPDATE approval_ledger SET approved_by='mallory'")
+        result = self._verify()
+        self.assertFalse(result['ok'])
+        self.assertTrue(any('entry hash mismatch' in e for e in result['errors']))
+
+    def test_approved_preview_serves_ledger_snapshot_not_disk(self):
+        self._approve()
+        with open(os.path.join(self.folder, self.fname), 'wb') as f:
+            f.write(b'png-bytes-CHANGED-ON-DISK')
+        r = self.client.get('/api/applications/file/preview?folder=clientA/projectB'
+                            + '&name=' + self.fname + '&approved=1')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data, self.original)
+
+    def test_approved_tree_built_from_ledger(self):
+        self._approve()
+        r = self.client.get('/api/applications/approved-tree')
+        tree = r.get_json()['tree']
+        self.assertEqual(len(tree), 1)
+        self.assertEqual(tree[0]['name'], 'clientA')
+        self.assertEqual(tree[0]['children'][0]['name'], 'projectB')
+        leaf = tree[0]['children'][0]['children'][0]
+        self.assertEqual(leaf['name'], self.fname)
+        self.assertEqual(leaf['type'], 'image')
+        self.assertTrue(leaf['approved_at'])
+
+
+class MigrationScriptTests(RouteTestBase):
+    """scripts/migrate_approved_to_ledger.py against a legacy approved/ layout."""
+
+    def setUp(self):
+        super().setUp()
+        self.approved_dir = tempfile.mkdtemp()
+        deep = os.path.join(self.approved_dir, 'clientA', 'projectB')
+        os.makedirs(deep)
+        with open(os.path.join(deep, 'sheet.xlsx'), 'wb') as f:
+            f.write(b'xlsx-approved-content')
+        with open(os.path.join(deep, 'orphan.pdf'), 'wb') as f:
+            f.write(b'pdf-orphan-content')
+
+        # legacy record for sheet.xlsx — Windows-style approved_path on purpose
+        with db_module.db_connect() as conn:
+            conn.execute(
+                'INSERT INTO app_file_status (folder, filename, status, file_mtime, created_at, approved_path) '
+                "VALUES (?, ?, 'approved', ?, ?, ?)",
+                ('/data/source/projectB', 'sheet.xlsx', '2026-01-01T10:00:00',
+                 '2026-01-02T09:00:00', 'clientA\\projectB\\sheet.xlsx')
+            )
+            # record whose copy is missing on disk
+            conn.execute(
+                'INSERT INTO app_file_status (folder, filename, status, file_mtime, created_at, approved_path) '
+                "VALUES (?, ?, 'approved', ?, ?, ?)",
+                ('/data/source/projectB', 'gone.docx', '2026-01-01T11:00:00',
+                 '2026-01-03T09:00:00', 'clientA/projectB/gone.docx')
+            )
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.approved_dir, ignore_errors=True)
+        super().tearDown()
+
+    def _run(self, *extra):
+        import importlib
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts')))
+        try:
+            script = importlib.import_module('migrate_approved_to_ledger')
+        finally:
+            sys.path.pop(0)
+        return script.main([
+            '--approved-dir', self.approved_dir,
+            '--scheduler-db', db_module.DB,
+            '--approvals-db', ledger_module.APPROVALS_DB,
+            *extra,
+        ])
+
+    def test_dry_run_writes_nothing(self):
+        self.assertEqual(self._run('--dry-run'), 0)
+        with ledger_module.ledger_connect() as conn:
+            count = conn.execute('SELECT COUNT(*) FROM approval_ledger').fetchone()[0]
+        self.assertEqual(count, 0)
+
+    def test_migration_ingests_and_chain_verifies(self):
+        import hashlib
+        self.assertEqual(self._run(), 0)
+        with ledger_module.ledger_connect() as conn:
+            rows = {r['approved_path']: r for r in
+                    conn.execute('SELECT * FROM approval_ledger').fetchall()}
+            result = ledger_module.verify_chain(conn)
+        self.assertTrue(result['ok'], result['errors'])
+        self.assertEqual(set(rows), {'clientA/projectB/sheet.xlsx', 'clientA/projectB/orphan.pdf'})
+
+        matched = rows['clientA/projectB/sheet.xlsx']
+        self.assertEqual(matched['folder'], '/data/source/projectB')
+        self.assertEqual(matched['created_at'], '2026-01-02T09:00:00')
+        self.assertEqual(matched['content_sha256'],
+                         hashlib.sha256(b'xlsx-approved-content').hexdigest())
+
+        orphan = rows['clientA/projectB/orphan.pdf']
+        self.assertEqual(orphan['folder'], '')
+        self.assertEqual(orphan['approved_by'], 'migration-orphan')
+
+    def test_second_run_refused_without_append(self):
+        self.assertEqual(self._run(), 0)
+        self.assertEqual(self._run(), 1)
+
+    def test_migrated_file_previews_and_lists(self):
+        self.assertEqual(self._run(), 0)
+        # pdf/image previews return raw blob bytes (excel/word are parsed server-side)
+        r = self.client.get('/api/applications/file/preview?folder=clientA/projectB'
+                            + '&name=orphan.pdf&approved=1')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data, b'pdf-orphan-content')
+        r = self.client.get('/api/applications/approved-tree')
+        tree = r.get_json()['tree']
+        self.assertEqual(tree[0]['name'], 'clientA')
+        names = {c['name'] for c in tree[0]['children'][0]['children']}
+        self.assertEqual(names, {'sheet.xlsx', 'orphan.pdf'})
 
 
 if __name__ == '__main__':

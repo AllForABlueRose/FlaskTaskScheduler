@@ -1,6 +1,7 @@
 function tabFromPath(){
     if (location.pathname.startsWith('/events')) return 'events';
     if (location.pathname.startsWith('/applications')) return 'applications';
+    if (location.pathname.startsWith('/timeline')) return 'timeline';
     if (location.pathname.startsWith('/taskboard')) return 'taskboard';
     if (location.pathname.startsWith('/schedule')) return 'schedule';
     return null;
@@ -10,7 +11,7 @@ function setActiveTabButton(name){
     document.querySelectorAll('.tab-btn').forEach(b => {
         b.classList.toggle('tab-btn-active', b.dataset.tab === name);
     });
-    const titles = { schedule: 'Scheduler', events: 'Events', applications: 'Applications', taskboard: 'TaskBoard' };
+    const titles = { schedule: 'Scheduler', events: 'Events', applications: 'Applications', timeline: 'Timeline', taskboard: 'TaskBoard' };
     document.title = titles[name] || 'Scheduler';
 }
 
@@ -24,6 +25,9 @@ function onTabEntered(name){
     }
     if (name === 'applications' && typeof initApplications === 'function') {
         initApplications();
+    }
+    if (name === 'timeline' && typeof initTimeline === 'function') {
+        initTimeline();
     }
     if (name === 'taskboard' && typeof initKanban === 'function') {
         initKanban();
@@ -65,6 +69,7 @@ function switchTab(name, opts){
 function initTabs(){
     const initialTab = document.body.dataset.initialTab || 'schedule';
     setActiveTabButton(initialTab);
+    onTabEntered(initialTab);
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {

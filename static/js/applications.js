@@ -171,6 +171,10 @@ function renderAppFileList(){
         if (file.status === 'approved') row.classList.add('app-file-approved');
         if (file.status === 'flagged') row.classList.add('app-file-flagged');
         if (file.status === 'rejected') row.classList.add('app-file-rejected');
+        if (file.status === 'modified') {
+            row.classList.add('app-file-modified');
+            row.title = 'Changed since approval - needs re-approval';
+        }
         if (file.ghost) row.classList.add('app-file-ghost');
 
         const badge = document.createElement('span');
@@ -368,6 +372,9 @@ function renderAppExcel(area, data){
     area.innerHTML = html;
     applyExcelZoom();
 
+    const scroll = area.querySelector('.app-excel-scroll');
+    if (scroll) wireExcelPanZoom(scroll);
+
     appCurrentPage = data.page;
     appTotalPages = data.total_pages;
     if (appTotalPages > 1){
@@ -378,6 +385,54 @@ function renderAppExcel(area, data){
         updateAppPageIndicator(data.page_label);
     }
     updateAppPreviewCursor();
+}
+
+let appExcelZoom = 1;
+const APP_EXCEL_ZOOM_MIN = 0.3;
+const APP_EXCEL_ZOOM_MAX = 4;
+const APP_EXCEL_ZOOM_STEP = 0.1;
+
+// Right-click drag to pan, scroll to zoom — scoped to a single Excel render.
+// Listeners live on the freshly-created scroll element, so a re-render that
+// replaces innerHTML drops them with the old node; nothing accumulates.
+function wireExcelPanZoom(scroll){
+    const zoomTarget = scroll.querySelector('.app-excel-zoom');
+    appExcelZoom = 1;
+    if (zoomTarget) zoomTarget.style.zoom = appExcelZoom;
+
+    scroll.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const step = e.deltaY < 0 ? APP_EXCEL_ZOOM_STEP : -APP_EXCEL_ZOOM_STEP;
+        const next = Math.min(APP_EXCEL_ZOOM_MAX, Math.max(APP_EXCEL_ZOOM_MIN, appExcelZoom + step));
+        appExcelZoom = Math.round(next * 10) / 10;
+        if (zoomTarget) zoomTarget.style.zoom = appExcelZoom;
+    }, { passive: false });
+
+    let panning = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    scroll.addEventListener('pointerdown', (e) => {
+        if (e.button !== 2) return;          // right button only
+        panning = true;
+        startX = e.clientX; startY = e.clientY;
+        startLeft = scroll.scrollLeft; startTop = scroll.scrollTop;
+        scroll.classList.add('app-excel-panning');
+        scroll.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    });
+    scroll.addEventListener('pointermove', (e) => {
+        if (!panning) return;
+        scroll.scrollLeft = startLeft - (e.clientX - startX);
+        scroll.scrollTop = startTop - (e.clientY - startY);
+    });
+    const endPan = (e) => {
+        if (!panning) return;
+        panning = false;
+        scroll.classList.remove('app-excel-panning');
+        try { scroll.releasePointerCapture(e.pointerId); } catch {}
+    };
+    scroll.addEventListener('pointerup', endPan);
+    scroll.addEventListener('pointercancel', endPan);
+    // Suppress the browser menu so the drag-to-pan gesture reads cleanly.
+    scroll.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 async function loadAppWord(area){
@@ -508,6 +563,16 @@ function renderApprovedGrid(){
         label.className = 'app-icon-label';
         label.textContent = item.name;
 
+        const dateStr = isFolder ? item.last_updated : item.approved_at;
+        if (dateStr) {
+            const dateTag = document.createElement('div');
+            dateTag.className = 'app-icon-date';
+            const d = new Date(dateStr);
+            dateTag.textContent = (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+            icon.style.position = 'relative';
+            icon.appendChild(dateTag);
+        }
+
         card.appendChild(icon);
         card.appendChild(label);
 
@@ -538,6 +603,22 @@ function selectApprovedFile(file){
     renderApprovedGrid();
     loadAppPreview();
     updateAppActionBar();
+}
+
+function clearApplicationView(){
+    const input = document.getElementById('appFolderInput');
+    if (input) input.value = '';
+    const status = document.getElementById('appFolderStatus');
+    if (status) status.classList.add('hidden');
+    appCurrentFolder = '';
+    appFiles = [];
+    appSelectedFile = null;
+    appCurrentPage = 0;
+    appTotalPages = 0;
+    appPdfDoc = null;
+    const list = document.getElementById('appFileList');
+    if (list) list.innerHTML = '<div class="text-sm text-slate-500 italic">Enter a folder path and click Fetch</div>';
+    clearAppPreview();
 }
 
 async function refetchAppFiles(){
