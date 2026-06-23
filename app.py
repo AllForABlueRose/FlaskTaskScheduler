@@ -17,6 +17,7 @@ from routes.main import main_bp
 from routes.schedule import schedule_bp
 from routes.tasks import tasks_bp
 from routes.timeline import timeline_bp
+from routes.traces import traces_bp
 from scheduler import run_scheduler
 
 
@@ -32,6 +33,7 @@ def create_app():
     app.register_blueprint(applications_bp)
     app.register_blueprint(timeline_bp)
     app.register_blueprint(kanban_bp)
+    app.register_blueprint(traces_bp)
     app.register_blueprint(logs_bp)
     request_log.register(app)
     return app

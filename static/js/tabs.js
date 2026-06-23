@@ -3,6 +3,7 @@ function tabFromPath(){
     if (location.pathname.startsWith('/applications')) return 'applications';
     if (location.pathname.startsWith('/timeline')) return 'timeline';
     if (location.pathname.startsWith('/taskboard')) return 'taskboard';
+    if (location.pathname.startsWith('/traces')) return 'traces';
     if (location.pathname.startsWith('/schedule')) return 'schedule';
     return null;
 }
@@ -11,7 +12,7 @@ function setActiveTabButton(name){
     document.querySelectorAll('.tab-btn').forEach(b => {
         b.classList.toggle('tab-btn-active', b.dataset.tab === name);
     });
-    const titles = { schedule: 'Scheduler', events: 'Events', applications: 'Applications', timeline: 'Timeline', taskboard: 'TaskBoard' };
+    const titles = { schedule: 'Scheduler', events: 'Events', applications: 'Applications', timeline: 'Timeline', taskboard: 'TaskBoard', traces: 'Traces' };
     document.title = titles[name] || 'Scheduler';
 }
 
@@ -31,6 +32,9 @@ function onTabEntered(name){
     }
     if (name === 'taskboard' && typeof initKanban === 'function') {
         initKanban();
+    }
+    if (name === 'traces' && typeof initTraces === 'function') {
+        initTraces();
     }
 }
 

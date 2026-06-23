@@ -61,3 +61,8 @@ def timeline_view():
 @main_bp.route('/taskboard')
 def taskboard_view():
     return _render_app('taskboard')
+
+
+@main_bp.route('/traces')
+def traces_view():
+    return _render_app('traces')

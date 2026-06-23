@@ -231,5 +231,68 @@ def init_db():
     ''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_kanban_cards_column ON kanban_cards(column_id)')
 
+    # --- Traces: workflow templates, workbook runs, and a content-addressed blob store ---
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS trace_workflows(
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at TEXT NOT NULL,
+            concluded_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS trace_workflow_pages(
+            id TEXT PRIMARY KEY,
+            workflow_id TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            explanation TEXT,
+            sample_sha256 TEXT,
+            position INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_trace_wpages_wf ON trace_workflow_pages(workflow_id)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS trace_workbooks(
+            id TEXT PRIMARY KEY,
+            workflow_id TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'in_progress',
+            has_extras INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            sealed_at TEXT,
+            last_opened_at TEXT
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_trace_workbooks_wf ON trace_workbooks(workflow_id)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS trace_workbook_pages(
+            id TEXT PRIMARY KEY,
+            workbook_id TEXT NOT NULL,
+            source_page_id TEXT,
+            kind TEXT NOT NULL DEFAULT 'template',
+            title TEXT NOT NULL DEFAULT '',
+            explanation TEXT,
+            image_sha256 TEXT,
+            notes TEXT,
+            base_position INTEGER NOT NULL,
+            sub_position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_trace_wbpages_wb ON trace_workbook_pages(workbook_id)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS trace_blobs(
+            content_sha256 TEXT PRIMARY KEY,
+            content BLOB NOT NULL,
+            size INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
     conn.commit()
     conn.close()

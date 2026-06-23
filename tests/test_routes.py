@@ -589,5 +589,140 @@ class MigrationScriptTests(RouteTestBase):
         self.assertEqual(names, {'sheet.xlsx', 'orphan.pdf'})
 
 
+class TracesApiTests(RouteTestBase):
+    """Lifecycle coverage for the Traces feature: template -> run -> seal."""
+
+    # a valid 1x1 PNG
+    PNG_DATA_URL = ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1'
+                    'HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==')
+
+    def _draft_with_pages(self, n=2, title='WF'):
+        wf = self.client.post('/api/traces/workflows', json={'title': title}).get_json()
+        for i in range(n):
+            r = self.client.post(f'/api/traces/workflows/{wf["id"]}/pages',
+                                  json={'title': f'P{i}', 'explanation': f'put image {i}'})
+            self.assertEqual(r.status_code, 200, r.data)
+        return wf['id']
+
+    def _concluded(self, n=2, title='WF'):
+        wf_id = self._draft_with_pages(n, title)
+        r = self.client.post(f'/api/traces/workflows/{wf_id}/conclude', json={})
+        self.assertEqual(r.status_code, 200, r.data)
+        return wf_id
+
+    def _upload(self):
+        r = self.client.post('/api/traces/blobs', json={'data_url': self.PNG_DATA_URL})
+        self.assertEqual(r.status_code, 200, r.data)
+        return r.get_json()['sha256']
+
+    def test_conclude_requires_title_and_pages(self):
+        wf = self.client.post('/api/traces/workflows', json={'title': ''}).get_json()
+        # empty title and no pages
+        r = self.client.post(f'/api/traces/workflows/{wf["id"]}/conclude', json={})
+        self.assertEqual(r.status_code, 400)
+        # title but still no pages
+        self.client.put(f'/api/traces/workflows/{wf["id"]}', json={'title': 'X'})
+        r = self.client.post(f'/api/traces/workflows/{wf["id"]}/conclude', json={})
+        self.assertEqual(r.status_code, 400)
+
+    def test_workflow_lists_split_by_status(self):
+        self._draft_with_pages(1, 'draftA')
+        self._concluded(1, 'doneB')
+        data = self.client.get('/api/traces/workflows').get_json()
+        self.assertEqual([w['title'] for w in data['drafts']], ['draftA'])
+        self.assertEqual([w['title'] for w in data['concluded']], ['doneB'])
+        self.assertEqual(data['concluded'][0]['page_count'], 1)
+
+    def test_blob_roundtrip_and_serve(self):
+        sha = self._upload()
+        r = self.client.get(f'/api/traces/blobs/{sha}')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.content_type, 'image/png')
+        self.assertTrue(r.data.startswith(b'\x89PNG'))
+        self.assertEqual(self.client.get('/api/traces/blobs/deadbeef').status_code, 404)
+
+    def test_blob_rejects_non_image(self):
+        r = self.client.post('/api/traces/blobs', json={'data_url': 'data:text/plain;base64,aGk='})
+        self.assertEqual(r.status_code, 400)
+
+    def test_seal_complete(self):
+        wf_id = self._concluded(2)
+        wb = self.client.post('/api/traces/workbooks', json={'workflow_id': wf_id}).get_json()
+        self.assertEqual(len(wb['pages']), 2)
+        sha = self._upload()
+        for p in wb['pages']:
+            r = self.client.put(f'/api/traces/workbooks/{wb["id"]}/pages/{p["id"]}',
+                                json={'image_sha256': sha, 'notes': 'ok'})
+            self.assertEqual(r.status_code, 200, r.data)
+        r = self.client.post(f'/api/traces/workbooks/{wb["id"]}/seal', json={})
+        self.assertEqual(r.get_json()['status'], 'complete')
+
+    def test_seal_incomplete_lists_missing(self):
+        wf_id = self._concluded(2)
+        wb = self.client.post('/api/traces/workbooks', json={'workflow_id': wf_id}).get_json()
+        sha = self._upload()
+        self.client.put(f'/api/traces/workbooks/{wb["id"]}/pages/{wb["pages"][0]["id"]}',
+                        json={'image_sha256': sha})
+        r = self.client.post(f'/api/traces/workbooks/{wb["id"]}/seal', json={}).get_json()
+        self.assertEqual(r['status'], 'incomplete')
+        self.assertEqual(r['missing_pages'], ['P1'])
+
+    def test_extra_page_makes_errata_and_orders_after_host(self):
+        wf_id = self._concluded(2)
+        wb = self.client.post('/api/traces/workbooks', json={'workflow_id': wf_id}).get_json()
+        sha = self._upload()
+        for p in wb['pages']:
+            self.client.put(f'/api/traces/workbooks/{wb["id"]}/pages/{p["id"]}',
+                            json={'image_sha256': sha})
+        # insert an extra after the first page
+        host = wb['pages'][0]
+        r = self.client.post(f'/api/traces/workbooks/{wb["id"]}/add-extra',
+                             json={'after_page_id': host['id']})
+        self.assertEqual(r.status_code, 200, r.data)
+        extra_id = r.get_json()['id']
+        # reload: order should be P0, extra, P1
+        fresh = self.client.get(f'/api/traces/workbooks/{wb["id"]}').get_json()
+        order = [p['id'] for p in fresh['pages']]
+        self.assertEqual(order, [wb['pages'][0]['id'], extra_id, wb['pages'][1]['id']])
+        r = self.client.post(f'/api/traces/workbooks/{wb["id"]}/seal', json={}).get_json()
+        self.assertEqual(r['status'], 'errata')
+        self.assertTrue(r['has_extras'])
+
+    def test_template_page_cannot_be_deleted_from_workbook(self):
+        wf_id = self._concluded(1)
+        wb = self.client.post('/api/traces/workbooks', json={'workflow_id': wf_id}).get_json()
+        r = self.client.delete(f'/api/traces/workbooks/{wb["id"]}/pages/{wb["pages"][0]["id"]}')
+        self.assertEqual(r.status_code, 400)
+
+    def test_sealed_workbook_rejects_edits_until_reopen(self):
+        wf_id = self._concluded(1)
+        wb = self.client.post('/api/traces/workbooks', json={'workflow_id': wf_id}).get_json()
+        sha = self._upload()
+        pid = wb['pages'][0]['id']
+        self.client.put(f'/api/traces/workbooks/{wb["id"]}/pages/{pid}', json={'image_sha256': sha})
+        self.client.post(f'/api/traces/workbooks/{wb["id"]}/seal', json={})
+        r = self.client.put(f'/api/traces/workbooks/{wb["id"]}/pages/{pid}', json={'notes': 'x'})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(self.client.post(f'/api/traces/workbooks/{wb["id"]}/reopen', json={}).status_code, 200)
+        r = self.client.put(f'/api/traces/workbooks/{wb["id"]}/pages/{pid}', json={'notes': 'x'})
+        self.assertEqual(r.status_code, 200)
+
+    def test_concluded_template_with_runs_is_locked(self):
+        wf_id = self._concluded(1)
+        page = self.client.get(f'/api/traces/workflows/{wf_id}').get_json()['pages'][0]
+        self.client.post('/api/traces/workbooks', json={'workflow_id': wf_id})
+        # title edit, page edit, and delete all blocked
+        self.assertEqual(self.client.put(f'/api/traces/workflows/{wf_id}',
+                                         json={'title': 'new'}).status_code, 403)
+        self.assertEqual(self.client.put(f'/api/traces/pages/{page["id"]}',
+                                         json={'title': 'new'}).status_code, 403)
+        self.assertEqual(self.client.delete(f'/api/traces/workflows/{wf_id}').status_code, 409)
+
+    def test_delete_draft_workflow(self):
+        wf_id = self._draft_with_pages(1)
+        self.assertEqual(self.client.delete(f'/api/traces/workflows/{wf_id}').status_code, 200)
+        self.assertEqual(self.client.get(f'/api/traces/workflows/{wf_id}').status_code, 404)
+
+
 if __name__ == '__main__':
     unittest.main()

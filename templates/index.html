@@ -28,6 +28,7 @@
         <a href="{{ url_for('main.applications_view') }}" data-tab="applications" class="tab-btn">Applications</a>
         <a href="{{ url_for('main.timeline_view') }}" data-tab="timeline" class="tab-btn">Timeline</a>
         <a href="{{ url_for('main.taskboard_view') }}" data-tab="taskboard" class="tab-btn">TaskBoard</a>
+        <a href="{{ url_for('main.traces_view') }}" data-tab="traces" class="tab-btn">Traces</a>
     </nav>
 </header>
 
@@ -292,6 +293,12 @@
     <div id="kanbanBoard" class="kanban-board flex-1 min-h-0 flex items-start gap-4 p-4 overflow-x-auto"></div>
 </section>
 
+<section id="view-traces" class="view view-traces flex flex-1 min-h-0 {{ '' if initial_tab == 'traces' else 'view-hidden' }}">
+    <aside id="tracesLeft" class="traces-left shrink-0 border-r border-slate-300 bg-slate-50 flex flex-col min-h-0"></aside>
+    <div id="tracesCenter" class="traces-center flex-1 min-w-0 flex flex-col min-h-0"></div>
+    <aside id="tracesRight" class="traces-right shrink-0 border-l border-slate-300 bg-slate-50 flex flex-col min-h-0"></aside>
+</section>
+
 {% include '_task_modal.html' %}
 
 {% include '_recurrence_modal.html' %}
@@ -335,6 +342,7 @@
 <script src="{{ url_for('static', filename='js/applications.js') }}"></script>
 <script src="{{ url_for('static', filename='js/timeline.js') }}"></script>
 <script src="{{ url_for('static', filename='js/kanban.js') }}"></script>
+<script src="{{ url_for('static', filename='js/traces.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
 {% if role == 'admin' %}
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
